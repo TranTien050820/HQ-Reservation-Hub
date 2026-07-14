@@ -1,0 +1,219 @@
+{
+  "header": {
+    "findStore": "매장 찾기",
+    "myReservations": "내 예약",
+    "language": "언어"
+  },
+  "footer": {
+    "text": "© {{year}} HQ WebOffice Reservations"
+  },
+  "common": {
+    "guest": "명",
+    "guests": "명",
+    "loading": "불러오는 중…",
+    "viewMenu": "메뉴 보기",
+    "viewAvailability": "예약 가능 시간 보기"
+  },
+  "home": {
+    "hero": {
+      "title": "도시 최고의 테이블을 예약하세요",
+      "subtitle": "실시간으로 좌석 현황을 확인하세요. 즉시 확정, 전화 필요 없음.",
+      "explore": "매장 둘러보기",
+      "slides": [
+        {
+          "tag": "인기",
+          "title": "도시 최고의 테이블을 예약하세요",
+          "subtitle": "실시간으로 좌석 현황을 확인하세요. 즉시 확정, 전화 필요 없음.",
+          "image": "https://images.unsplash.com/photo-1517248135467-4c7edcad34c4?auto=format&fit=crop&w=1600&q=70"
+        },
+        {
+          "tag": "오늘 밤",
+          "title": "매주 주말 라이브 음악",
+          "subtitle": "저녁 식사와 함께하는 공연 — 매주 금요일과 토요일 밤, 선정된 매장에서 라이브 재즈와 어쿠스틱 연주.",
+          "image": "https://images.unsplash.com/photo-1514933651103-005eec06c04b?auto=format&fit=crop&w=1600&q=70"
+        },
+        {
+          "tag": "신규",
+          "title": "해변 테라스 오픈",
+          "subtitle": "물가의 테이블을 예약하세요 — 신선한 해산물, 시원한 바닷바람과 멋진 노을.",
+          "image": "https://images.unsplash.com/photo-1559339352-11d035aa65de?auto=format&fit=crop&w=1600&q=70"
+        },
+        {
+          "tag": "한정 기간",
+          "title": "셰프의 테이스팅 메뉴",
+          "subtitle": "셰프가 선보이는 5코스 계절 메뉴 — 이번 달 한정.",
+          "image": "https://images.unsplash.com/photo-1414235077428-338989a2e8c0?auto=format&fit=crop&w=1600&q=70"
+        }
+      ]
+    },
+    "highlights": {
+      "heading": "하이라이트 & 진행 중인 이벤트",
+      "subtitle": "각 매장에서 진행되는 특별 이벤트, 라이브 공연 및 계절 메뉴.",
+      "items": [
+        {
+          "tag": "금요일 & 토요일",
+          "title": "라이브 재즈 나이트",
+          "desc": "전속 재즈 트리오가 저녁 시간 동안 연주합니다 — 좌석이 빠르게 차니 미리 예약하세요.",
+          "image": "https://images.unsplash.com/photo-1514933651103-005eec06c04b?auto=format&fit=crop&w=900&q=70",
+          "storenum": 1
+        },
+        {
+          "tag": "신규",
+          "title": "해변 테라스",
+          "desc": "해변가 좌석 공간이 새롭게 오픈했습니다. 노을과 함께 저녁과 칵테일을 즐기세요.",
+          "image": "https://images.unsplash.com/photo-1559339352-11d035aa65de?auto=format&fit=crop&w=900&q=70",
+          "storenum": 2
+        },
+        {
+          "tag": "이번 달",
+          "title": "셰프의 테이스팅 메뉴",
+          "desc": "와인과 함께하는 5코스 계절 메뉴, 한정된 기간 동안 제공됩니다.",
+          "image": "https://images.unsplash.com/photo-1414235077428-338989a2e8c0?auto=format&fit=crop&w=900&q=70",
+          "storenum": 3
+        },
+        {
+          "tag": "일요일",
+          "title": "주말 브런치",
+          "desc": "매주 일요일 오전 10시부터 오후 2시까지 무제한 미모사와 정식 브런치 메뉴.",
+          "image": "https://images.unsplash.com/photo-1551218808-94e220e084d2?auto=format&fit=crop&w=900&q=70",
+          "storenum": 1
+        }
+      ]
+    },
+    "howItWorks": {
+      "heading": "이용 방법",
+      "steps": [
+        { "title": "검색", "desc": "날짜와 인원수를 알려주시면 예약 가능한 매장을 보여드립니다." },
+        { "title": "시간 선택", "desc": "원하는 좌석 구역과 시간을 선택하세요." },
+        { "title": "예약 확정", "desc": "정보를 입력하면 예약 완료 — 전화도 대기도 필요 없습니다." }
+      ]
+    },
+    "restaurants": {
+      "heading": "예약 가능한 매장",
+      "subtitle": "{{date}}, {{count}}{{guestLabel}} 기준 좌석 현황입니다",
+      "empty": "이 사이트에 등록된 매장이 아직 없습니다.",
+      "loading": "매장 목록을 불러오는 중…"
+    },
+    "cta": {
+      "title": "더 알아보고 싶으세요?",
+      "subtitle": "예약 전에 전체 메뉴를 확인하고 무엇을 즐길 수 있는지 알아보세요.",
+      "button": "매장 둘러보기"
+    }
+  },
+  "restaurant": {
+    "seatingArea": "좌석 구역",
+    "availableTimes": "예약 가능 시간",
+    "noSeatingAreas": "설정된 좌석 구역이 없습니다.",
+    "paused": "(예약 중지)",
+    "noBookableTitle": "해당 조건에 예약 가능한 시간이 없습니다",
+    "noBookableZone": "선택하신 날짜에 이 좌석 구역은 예약이 마감되었습니다 — 다른 구역이나 날짜를 시도해 보세요.",
+    "noBookableNoPeriod": "선택하신 날짜에는 온라인 예약을 받지 않습니다.",
+    "noBookableNoTime": "이 날짜에는 더 이상 예약 가능한 시간이 없습니다 — 다른 날짜를 시도해 보세요.",
+    "about": "{{name}} 소개",
+    "aboutText": "계절 메뉴와 따뜻한 분위기로 유명한 {{cuisine}} 레스토랑입니다. 온라인으로 예약하시면 자리를 보장해 드립니다 — 전화하실 필요 없습니다. 예약 시간 기준 15분 이내에 도착해 주세요.",
+    "goodToKnow": "알아두세요",
+    "goodToKnowItems": [
+      "예약 시간 기준 15분까지 자리가 유지됩니다.",
+      "단체 손님은 여러 좌석 구역에 나뉘어 배치될 수 있습니다.",
+      "취소나 일정 변경이 필요하신가요? '내 예약'에서 언제든 관리하실 수 있습니다."
+    ],
+    "serviceHours": "영업 시간",
+    "hoursNotPublished": "이 매장의 영업 시간이 아직 등록되지 않았습니다.",
+    "contact": "연락처",
+    "highlights": "하이라이트 & 서비스",
+    "menuHighlights": "추천 메뉴",
+    "viewFullMenu": "전체 메뉴 보기",
+    "noMenuHighlights": "메뉴 정보가 곧 제공됩니다."
+  },
+  "menu": {
+    "back": "매장으로 돌아가기",
+    "title": "메뉴 — {{name}}",
+    "subtitle": "카테고리별로 메뉴를 둘러보세요. 가격은 USD입니다.",
+    "loading": "메뉴를 불러오는 중…",
+    "error": "메뉴를 불러오지 못했습니다",
+    "empty": "메뉴가 아직 등록되지 않았습니다 — 곧 다시 확인해 주세요.",
+    "vegetarian": "비건/베지테리언",
+    "spicy": "매운맛",
+    "signature": "대표 메뉴",
+    "bookCta": "마음에 드는 메뉴를 찾으셨나요? 지금 예약하세요.",
+    "bookNow": "테이블 예약하기"
+  },
+  "searchBar": {
+    "date": "날짜",
+    "partySize": "인원수",
+    "findTable": "테이블 찾기",
+    "errorMin": "최소 1명 이상",
+    "errorMax": "최대 {{max}}명까지"
+  },
+  "booking": {
+    "back": "예약 가능 시간으로 돌아가기",
+    "title": "예약 확인",
+    "fullName": "성명",
+    "fullNamePlaceholder": "홍길동",
+    "fullNameError": "이름을 입력해 주세요",
+    "phone": "전화번호",
+    "phonePlaceholder": "(555) 123-4567",
+    "phoneError": "전화번호를 입력해 주세요",
+    "email": "이메일 (선택)",
+    "emailPlaceholder": "jane@example.com",
+    "notes": "특별 요청 사항 (선택)",
+    "notesPlaceholder": "알레르기, 기념일, 좌석 선호 등을 입력해 주세요…",
+    "submit": "예약 완료",
+    "submitting": "예약 중…",
+    "submitError": "예약을 완료할 수 없습니다",
+    "details": "예약 정보",
+    "date": "날짜",
+    "time": "시간",
+    "partySize": "인원수",
+    "seating": "좌석",
+    "guests": "명"
+  },
+  "confirmation": {
+    "title": "예약이 완료되었습니다!",
+    "subtitle": "확인 메일이 발송되었으며 좌석이 예약되었습니다.",
+    "reservationNo": "예약 번호",
+    "name": "이름",
+    "date": "날짜",
+    "time": "시간",
+    "partySize": "인원수",
+    "guests": "명",
+    "bookAnother": "다른 테이블 예약하기",
+    "viewReservations": "내 예약 보기"
+  },
+  "myBookings": {
+    "title": "내 예약",
+    "subtitle": "예약 시 사용한 전화번호로 예약을 조회하세요.",
+    "phonePlaceholder": "(555) 123-4567",
+    "search": "조회",
+    "searching": "조회 중…",
+    "noResults": "해당 전화번호로 예약을 찾을 수 없습니다.",
+    "guests": "명",
+    "reservationNo": "예약 번호",
+    "cancel": "취소",
+    "cancelling": "취소 중…",
+    "confirmCancel": "예약 {{ref}}을 취소하시겠습니까?",
+    "errorLoad": "예약 정보를 불러올 수 없습니다",
+    "errorCancel": "예약을 취소할 수 없습니다",
+    "upcoming": "예정된 예약",
+    "past": "지난 예약",
+    "viewMenu": "메뉴 보기",
+    "ctaTitle": "다음 방문을 준비해보세요",
+    "ctaSubtitle": "더 많은 매장을 둘러보고 몇 초 만에 다음 테이블을 예약하세요.",
+    "ctaButton": "매장 둘러보기",
+    "reviewPrompt": "이용은 어떠셨나요?",
+    "reviewPlaceholder": "더 자세한 의견을 남겨주세요 (선택)…",
+    "reviewSubmit": "리뷰 보내기",
+    "reviewThanks": "소중한 의견 감사합니다!",
+    "status": {
+      "1": "신규",
+      "2": "확정됨",
+      "3": "취소됨",
+      "4": "예약됨",
+      "5": "지남",
+      "6": "착석",
+      "7": "노쇼",
+      "8": "종료",
+      "unknown": "알 수 없음"
+    }
+  }
+}

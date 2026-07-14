@@ -1,0 +1,219 @@
+{
+  "header": {
+    "findStore": "查找门店",
+    "myReservations": "我的预订",
+    "language": "语言"
+  },
+  "footer": {
+    "text": "© {{year}} HQ WebOffice Reservations"
+  },
+  "common": {
+    "guest": "位",
+    "guests": "位",
+    "loading": "加载中…",
+    "viewMenu": "查看菜单",
+    "viewAvailability": "查看可预订时间"
+  },
+  "home": {
+    "hero": {
+      "title": "预订城中最好的餐桌",
+      "subtitle": "实时查看各门店的空位情况，立即确认，无需电话预订。",
+      "explore": "浏览门店",
+      "slides": [
+        {
+          "tag": "热门",
+          "title": "预订城中最好的餐桌",
+          "subtitle": "实时查看各门店的空位情况，立即确认，无需电话预订。",
+          "image": "https://images.unsplash.com/photo-1517248135467-4c7edcad34c4?auto=format&fit=crop&w=1600&q=70"
+        },
+        {
+          "tag": "今晚",
+          "title": "每周末现场音乐",
+          "subtitle": "美食与表演相伴 — 每周五、周六晚，部分门店将呈现现场爵士与原声演出。",
+          "image": "https://images.unsplash.com/photo-1514933651103-005eec06c04b?auto=format&fit=crop&w=1600&q=70"
+        },
+        {
+          "tag": "新开放",
+          "title": "海滨露台现已开放",
+          "subtitle": "预订一张临海的餐桌 — 新鲜海鲜、清爽海风与迷人日落。",
+          "image": "https://images.unsplash.com/photo-1559339352-11d035aa65de?auto=format&fit=crop&w=1600&q=70"
+        },
+        {
+          "tag": "限时供应",
+          "title": "主厨品鉴菜单",
+          "subtitle": "主厨精心打造的五道季节菜品 — 本月限定供应。",
+          "image": "https://images.unsplash.com/photo-1414235077428-338989a2e8c0?auto=format&fit=crop&w=1600&q=70"
+        }
+      ]
+    },
+    "highlights": {
+      "heading": "亮点活动 & 近期活动",
+      "subtitle": "各门店的特别活动、现场演出与季节限定菜单。",
+      "items": [
+        {
+          "tag": "周五 & 周六",
+          "title": "现场爵士之夜",
+          "desc": "驻店爵士三重奏将在晚餐时段全程演出 — 座位有限，请提早预订。",
+          "image": "https://images.unsplash.com/photo-1514933651103-005eec06c04b?auto=format&fit=crop&w=900&q=70",
+          "storenum": 1
+        },
+        {
+          "tag": "新开放",
+          "title": "海滨露台",
+          "desc": "我们的海滨露台座位区现已开放，可在日落时享用晚餐与鸡尾酒。",
+          "image": "https://images.unsplash.com/photo-1559339352-11d035aa65de?auto=format&fit=crop&w=900&q=70",
+          "storenum": 2
+        },
+        {
+          "tag": "本月",
+          "title": "主厨品鉴菜单",
+          "desc": "搭配美酒的五道季节菜品，限时供应。",
+          "image": "https://images.unsplash.com/photo-1414235077428-338989a2e8c0?auto=format&fit=crop&w=900&q=70",
+          "storenum": 3
+        },
+        {
+          "tag": "周日",
+          "title": "周末早午餐",
+          "desc": "每周日上午10点至下午2点，无限量含羞草鸡尾酒与丰盛早午餐菜单。",
+          "image": "https://images.unsplash.com/photo-1551218808-94e220e084d2?auto=format&fit=crop&w=900&q=70",
+          "storenum": 1
+        }
+      ]
+    },
+    "howItWorks": {
+      "heading": "使用方法",
+      "steps": [
+        { "title": "搜索", "desc": "告诉我们日期和用餐人数，我们将为您展示有空位的门店。" },
+        { "title": "选择时间", "desc": "选择适合您的座位区域和时间段。" },
+        { "title": "确认预订", "desc": "填写您的信息即可完成预订 — 无需电话，无需等待。" }
+      ]
+    },
+    "restaurants": {
+      "heading": "可预订门店",
+      "subtitle": "正在为 {{date}}、{{count}}{{guestLabel}} 显示可用餐桌",
+      "empty": "该站点暂未配置任何门店。",
+      "loading": "正在加载门店列表…"
+    },
+    "cta": {
+      "title": "还想了解更多？",
+      "subtitle": "预订前浏览完整菜单，提前了解店内特色。",
+      "button": "浏览门店"
+    }
+  },
+  "restaurant": {
+    "seatingArea": "座位区域",
+    "availableTimes": "可预订时间",
+    "noSeatingAreas": "暂未配置座位区域。",
+    "paused": "(暂停预订)",
+    "noBookableTitle": "该条件下暂无可预订时间",
+    "noBookableZone": "所选日期该座位区域已满 — 请尝试其他区域或日期。",
+    "noBookableNoPeriod": "该门店所选日期不接受在线预订。",
+    "noBookableNoTime": "该日期已无可预订时间 — 请尝试其他日期。",
+    "about": "关于 {{name}}",
+    "aboutText": "这是一家以季节菜单和温馨用餐环境著称的{{cuisine}}餐厅。在线预订即可为您保留座位 — 无需电话。请在预订时间起15分钟内到店，以保留座位。",
+    "goodToKnow": "温馨提示",
+    "goodToKnowItems": [
+      "餐桌将在预订时间后保留15分钟。",
+      "人数较多的团体可能会被安排在不同的座位区域。",
+      "需要取消或更改预订？随时可在“我的预订”中进行管理。"
+    ],
+    "serviceHours": "营业时间",
+    "hoursNotPublished": "该门店尚未公布营业时间。",
+    "contact": "联系方式",
+    "highlights": "亮点与服务",
+    "menuHighlights": "招牌推荐",
+    "viewFullMenu": "查看完整菜单",
+    "noMenuHighlights": "菜单信息即将上线。"
+  },
+  "menu": {
+    "back": "返回门店页面",
+    "title": "菜单 — {{name}}",
+    "subtitle": "按分类浏览我们的菜品，价格以美元（USD）显示。",
+    "loading": "正在加载菜单…",
+    "error": "菜单加载失败",
+    "empty": "菜单尚未发布 — 请稍后再来查看。",
+    "vegetarian": "素食",
+    "spicy": "辣味",
+    "signature": "招牌",
+    "bookCta": "看好想吃的菜了吗？现在就预订餐桌。",
+    "bookNow": "预订餐桌"
+  },
+  "searchBar": {
+    "date": "日期",
+    "partySize": "用餐人数",
+    "findTable": "查找餐桌",
+    "errorMin": "至少 1 位",
+    "errorMax": "最多 {{max}} 位"
+  },
+  "booking": {
+    "back": "返回可预订时间",
+    "title": "确认预订信息",
+    "fullName": "姓名",
+    "fullNamePlaceholder": "王小明",
+    "fullNameError": "请输入您的姓名",
+    "phone": "电话号码",
+    "phonePlaceholder": "(555) 123-4567",
+    "phoneError": "请输入您的电话号码",
+    "email": "电子邮箱（选填）",
+    "emailPlaceholder": "jane@example.com",
+    "notes": "特别要求（选填）",
+    "notesPlaceholder": "过敏信息、纪念日、座位偏好等…",
+    "submit": "完成预订",
+    "submitting": "正在预订…",
+    "submitError": "无法完成预订",
+    "details": "预订详情",
+    "date": "日期",
+    "time": "时间",
+    "partySize": "用餐人数",
+    "seating": "座位区域",
+    "guests": "位"
+  },
+  "confirmation": {
+    "title": "预订成功！",
+    "subtitle": "确认信息已发送，您的餐桌已为您保留。",
+    "reservationNo": "预订编号",
+    "name": "姓名",
+    "date": "日期",
+    "time": "时间",
+    "partySize": "用餐人数",
+    "guests": "位",
+    "bookAnother": "再预订一桌",
+    "viewReservations": "查看我的预订"
+  },
+  "myBookings": {
+    "title": "我的预订",
+    "subtitle": "使用预订时填写的电话号码查询您的预订记录。",
+    "phonePlaceholder": "(555) 123-4567",
+    "search": "搜索",
+    "searching": "正在搜索…",
+    "noResults": "未找到该电话号码对应的预订记录。",
+    "guests": "位",
+    "reservationNo": "预订编号",
+    "cancel": "取消",
+    "cancelling": "正在取消…",
+    "confirmCancel": "确认取消预订 {{ref}} 吗？",
+    "errorLoad": "无法加载预订信息",
+    "errorCancel": "无法取消预订",
+    "upcoming": "即将到店",
+    "past": "历史预订",
+    "viewMenu": "查看菜单",
+    "ctaTitle": "准备好下一次光临了吗？",
+    "ctaSubtitle": "浏览更多门店，几秒钟即可预订下一张餐桌。",
+    "ctaButton": "浏览门店",
+    "reviewPrompt": "您的用餐体验如何？",
+    "reviewPlaceholder": "欢迎留下更多反馈（选填）…",
+    "reviewSubmit": "提交评价",
+    "reviewThanks": "感谢您的反馈！",
+    "status": {
+      "1": "新建",
+      "2": "已确认",
+      "3": "已取消",
+      "4": "已预留",
+      "5": "已逾期",
+      "6": "已入座",
+      "7": "未到店",
+      "8": "已结束",
+      "unknown": "未知"
+    }
+  }
+}

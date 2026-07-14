@@ -1,0 +1,229 @@
+{
+  "header": {
+    "findStore": "Tìm nhà hàng",
+    "myReservations": "Đơn đặt bàn của tôi",
+    "language": "Ngôn ngữ"
+  },
+  "footer": {
+    "text": "© {{year}} HQ WebOffice Reservations"
+  },
+  "common": {
+    "guest": "khách",
+    "guests": "khách",
+    "loading": "Đang tải…",
+    "viewMenu": "Xem menu",
+    "viewAvailability": "Xem chỗ trống"
+  },
+  "home": {
+    "hero": {
+      "title": "Đặt những bàn ăn tốt nhất trong thành phố",
+      "subtitle": "Cập nhật chỗ trống theo thời gian thực tại các nhà hàng của chúng tôi. Xác nhận ngay, không cần gọi điện.",
+      "explore": "Đặt bàn",
+      "slides": [
+        {
+          "tag": "Nổi bật",
+          "title": "Đặt những bàn ăn tốt nhất trong thành phố",
+          "subtitle": "Cập nhật chỗ trống theo thời gian thực tại các nhà hàng của chúng tôi. Xác nhận ngay, không cần gọi điện.",
+          "image": "https://images.unsplash.com/photo-1517248135467-4c7edcad34c4?auto=format&fit=crop&w=1600&q=70"
+        },
+        {
+          "tag": "Tối nay",
+          "title": "Nhạc sống mỗi cuối tuần",
+          "subtitle": "Thưởng thức bữa tối cùng nhạc jazz và acoustic trực tiếp vào tối Thứ Sáu & Thứ Bảy tại các chi nhánh được chọn.",
+          "image": "https://images.unsplash.com/photo-1514933651103-005eec06c04b?auto=format&fit=crop&w=1600&q=70"
+        },
+        {
+          "tag": "Mới",
+          "title": "Khu vực ven biển vừa khai trương",
+          "subtitle": "Đặt bàn ngay bên bờ biển — hải sản tươi sống, gió biển mát lành và hoàng hôn tuyệt đẹp.",
+          "image": "https://images.unsplash.com/photo-1559339352-11d035aa65de?auto=format&fit=crop&w=1600&q=70"
+        },
+        {
+          "tag": "Thời gian giới hạn",
+          "title": "Thực đơn thử nghiệm của bếp trưởng",
+          "subtitle": "Hành trình ẩm thực 5 món theo mùa do bếp trưởng chế biến — chỉ trong tháng này.",
+          "image": "https://images.unsplash.com/photo-1414235077428-338989a2e8c0?auto=format&fit=crop&w=1600&q=70"
+        }
+      ]
+    },
+    "highlights": {
+      "heading": "Điểm nổi bật & sự kiện sắp tới",
+      "subtitle": "Sự kiện đặc biệt, nhạc sống và thực đơn theo mùa tại các nhà hàng của chúng tôi.",
+      "items": [
+        {
+          "tag": "Thứ Sáu & Thứ Bảy",
+          "title": "Đêm nhạc Jazz sống",
+          "desc": "Ban nhạc jazz biểu diễn xuyên suốt bữa tối — đặt bàn sớm vì số lượng có hạn.",
+          "image": "https://images.unsplash.com/photo-1514933651103-005eec06c04b?auto=format&fit=crop&w=900&q=70",
+          "storenum": 1
+        },
+        {
+          "tag": "Mới",
+          "title": "Khu vực ven biển",
+          "desc": "Khu vực ngồi ven biển đã mở để bạn thưởng thức bữa tối và cocktail lúc hoàng hôn.",
+          "image": "https://images.unsplash.com/photo-1559339352-11d035aa65de?auto=format&fit=crop&w=900&q=70",
+          "storenum": 2
+        },
+        {
+          "tag": "Tháng này",
+          "title": "Thực đơn thử nghiệm của bếp trưởng",
+          "desc": "Thực đơn 5 món theo mùa kèm rượu vang, chỉ có trong thời gian giới hạn.",
+          "image": "https://images.unsplash.com/photo-1414235077428-338989a2e8c0?auto=format&fit=crop&w=900&q=70",
+          "storenum": 3
+        },
+        {
+          "tag": "Chủ nhật",
+          "title": "Brunch cuối tuần",
+          "desc": "Mimosa uống không giới hạn cùng thực đơn brunch đầy đủ, mỗi Chủ nhật từ 10h đến 14h.",
+          "image": "https://images.unsplash.com/photo-1551218808-94e220e084d2?auto=format&fit=crop&w=900&q=70",
+          "storenum": 1
+        }
+      ]
+    },
+    "howItWorks": {
+      "heading": "Cách thức hoạt động",
+      "steps": [
+        { "title": "Tìm kiếm", "desc": "Cho chúng tôi biết ngày và số khách, chúng tôi sẽ hiển thị các nhà hàng còn bàn trống." },
+        { "title": "Chọn giờ", "desc": "Chọn khu vực ngồi và giờ phù hợp với bạn." },
+        { "title": "Xác nhận", "desc": "Điền thông tin của bạn và hoàn tất — không cần gọi điện, không cần chờ đợi." }
+      ]
+    },
+    "restaurants": {
+      "heading": "Nhà hàng đang nhận đặt bàn",
+      "subtitle": "Hiển thị bàn cho {{count}} {{guestLabel}} vào ngày {{date}}",
+      "empty": "Hiện chưa có nhà hàng nào được cấu hình cho trang này.",
+      "loading": "Đang tải danh sách nhà hàng…"
+    },
+    "cta": {
+      "title": "Vẫn còn đói bụng?",
+      "subtitle": "Xem menu đầy đủ trước khi đặt bàn để biết chính xác nhà hàng có gì.",
+      "button": "Khám phá nhà hàng"
+    }
+  },
+  "restaurant": {
+    "seatingArea": "Khu vực ngồi",
+    "availableTimes": "Giờ còn trống",
+    "noSeatingAreas": "Chưa có khu vực ngồi nào được cấu hình.",
+    "paused": "(tạm dừng)",
+    "noBookableTitle": "Không có giờ trống cho lựa chọn này",
+    "noBookableZone": "Khu vực này đã hết bàn cho ngày bạn chọn — hãy thử khu vực hoặc ngày khác.",
+    "noBookableNoPeriod": "Nhà hàng này không nhận đặt bàn trực tuyến cho ngày bạn chọn.",
+    "noBookableNoTime": "Không còn giờ trống cho ngày này — hãy thử ngày khác.",
+    "about": "Giới thiệu về {{name}}",
+    "aboutText": "Một địa điểm {{cuisine}} nổi tiếng với thực đơn theo mùa và không gian ấm cúng. Đặt bàn trực tuyến và chúng tôi sẽ giữ bàn cho bạn — không cần gọi điện. Vui lòng đến trong vòng 15 phút sau giờ đặt để giữ chỗ.",
+    "goodToKnow": "Lưu ý",
+    "goodToKnowItems": [
+      "Bàn được giữ trong 15 phút sau giờ đặt.",
+      "Nhóm đông khách có thể được sắp xếp ở nhiều khu vực khác nhau.",
+      "Cần hủy hoặc đổi lịch? Quản lý bất cứ lúc nào trong \"Đơn đặt bàn của tôi\"."
+    ],
+    "serviceHours": "Giờ phục vụ",
+    "hoursNotPublished": "Giờ hoạt động chưa được công bố cho địa điểm này.",
+    "contact": "Liên hệ",
+    "highlights": "Điểm nổi bật & dịch vụ",
+    "menuHighlights": "Món nổi bật",
+    "viewFullMenu": "Xem toàn bộ menu",
+    "noMenuHighlights": "Thông tin menu sẽ sớm được cập nhật."
+  },
+  "menu": {
+    "back": "Quay lại nhà hàng",
+    "title": "Menu — {{name}}",
+    "subtitle": "Khám phá các món ăn theo danh mục. Giá tính bằng USD.",
+    "loading": "Đang tải menu…",
+    "error": "Không thể tải menu",
+    "empty": "Menu chưa được công bố — vui lòng quay lại sau.",
+    "vegetarian": "Chay",
+    "spicy": "Cay",
+    "signature": "Đặc trưng",
+    "bookCta": "Sẵn sàng dùng bữa? Đặt bàn ngay.",
+    "bookNow": "Đặt bàn ngay"
+  },
+  "searchBar": {
+    "date": "Ngày",
+    "partySize": "Số khách",
+    "findTable": "Tìm bàn",
+    "errorMin": "Tối thiểu 1 khách",
+    "errorMax": "Tối đa {{max}} khách"
+  },
+  "booking": {
+    "back": "Quay lại lịch trống",
+    "title": "Xác nhận đặt bàn",
+    "fullName": "Họ và tên",
+    "fullNamePlaceholder": "Nguyễn Văn A",
+    "fullNameError": "Vui lòng nhập họ tên",
+    "phone": "Số điện thoại",
+    "phonePlaceholder": "(555) 123-4567",
+    "phoneError": "Vui lòng nhập số điện thoại",
+    "email": "Email (không bắt buộc)",
+    "emailPlaceholder": "ten@example.com",
+    "notes": "Yêu cầu đặc biệt (không bắt buộc)",
+    "notesPlaceholder": "Dị ứng thực phẩm, dịp đặc biệt, vị trí ngồi…",
+    "submit": "Hoàn tất đặt bàn",
+    "submitting": "Đang đặt bàn…",
+    "submitError": "Không thể hoàn tất đặt bàn",
+    "details": "Thông tin đặt bàn",
+    "date": "Ngày",
+    "time": "Giờ",
+    "partySize": "Số khách",
+    "seating": "Khu vực",
+    "guests": "khách",
+    "extraFieldRequired": "Vui lòng nhập thông tin này"
+  },
+  "confirmation": {
+    "title": "Đặt bàn thành công!",
+    "subtitle": "Xác nhận đã được gửi và bàn của bạn đã được giữ.",
+    "reservationNo": "Mã đặt bàn",
+    "name": "Tên",
+    "date": "Ngày",
+    "time": "Giờ",
+    "partySize": "Số khách",
+    "guests": "khách",
+    "bookAnother": "Đặt bàn khác",
+    "viewReservations": "Xem đơn đặt bàn của tôi"
+  },
+  "bookingDetail": {
+    "back": "Quay lại",
+    "notFound": "Không tìm thấy đơn đặt bàn này — hãy quay lại và mở từ danh sách đơn đặt bàn.",
+    "viewMenu": "Xem menu",
+    "seatTables": "Bàn được xếp",
+    "tableLabel": "Bàn số {{num}}"
+  },
+  "myBookings": {
+    "title": "Đơn đặt bàn của tôi",
+    "subtitle": "Tra cứu đơn đặt bàn bằng số điện thoại bạn đã dùng để đặt.",
+    "phonePlaceholder": "(555) 123-4567",
+    "search": "Tìm kiếm",
+    "searching": "Đang tìm…",
+    "noResults": "Không tìm thấy đơn đặt bàn với số điện thoại này.",
+    "guests": "khách",
+    "reservationNo": "Mã đặt bàn",
+    "cancel": "Hủy",
+    "cancelling": "Đang hủy…",
+    "confirmCancel": "Hủy đơn đặt bàn {{ref}}?",
+    "errorLoad": "Không thể tải đơn đặt bàn",
+    "errorCancel": "Không thể hủy đơn đặt bàn",
+    "upcoming": "Sắp tới",
+    "past": "Lịch sử đặt bàn",
+    "viewDetails": "Xem chi tiết",
+    "showMore": "Xem thêm",
+    "ctaTitle": "Sẵn sàng cho lần ghé tiếp theo?",
+    "ctaSubtitle": "Khám phá thêm nhà hàng và đặt bàn tiếp theo chỉ trong vài giây.",
+    "ctaButton": "Khám phá nhà hàng",
+    "reviewPrompt": "Bữa ăn của bạn thế nào?",
+    "reviewPlaceholder": "Chia sẻ thêm cảm nhận (không bắt buộc)…",
+    "reviewSubmit": "Gửi đánh giá",
+    "reviewThanks": "Cảm ơn bạn đã phản hồi!",
+    "status": {
+      "1": "Chờ xác nhận",
+      "2": "Đã xác nhận",
+      "3": "Nhà hàng đã hủy",
+      "4": "Đã xếp chỗ",
+      "5": "Đã trễ",
+      "6": "Đã đến",
+      "7": "Bạn không đến",
+      "8": "Đã đến",
+      "100": "Nhà hàng không xác nhận",
+      "unknown": "Không xác định"
+    }
+  }
+}

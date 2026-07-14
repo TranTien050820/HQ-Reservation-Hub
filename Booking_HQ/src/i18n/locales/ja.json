@@ -1,0 +1,219 @@
+{
+  "header": {
+    "findStore": "店舗を探す",
+    "myReservations": "予約一覧",
+    "language": "言語"
+  },
+  "footer": {
+    "text": "© {{year}} © {{year}} HQ WebOffice Reservations"
+  },
+  "common": {
+    "guest": "名",
+    "guests": "名",
+    "loading": "読み込み中…",
+    "viewMenu": "メニューを見る",
+    "viewAvailability": "空席を確認"
+  },
+  "home": {
+    "hero": {
+      "title": "街で一番のテーブルを予約しよう",
+      "subtitle": "リアルタイムの空席情報で、すぐに予約確定。電話の必要はありません。",
+      "explore": "店舗を見る",
+      "slides": [
+        {
+          "tag": "人気",
+          "title": "街で一番のテーブルを予約しよう",
+          "subtitle": "リアルタイムの空席情報で、すぐに予約確定。電話の必要はありません。",
+          "image": "https://images.unsplash.com/photo-1517248135467-4c7edcad34c4?auto=format&fit=crop&w=1600&q=70"
+        },
+        {
+          "tag": "今夜",
+          "title": "毎週末ライブ音楽",
+          "subtitle": "ディナーとショーを — 金曜・土曜の夜、選ばれた店舗でライブジャズとアコースティックを開催。",
+          "image": "https://images.unsplash.com/photo-1514933651103-005eec06c04b?auto=format&fit=crop&w=1600&q=70"
+        },
+        {
+          "tag": "新着",
+          "title": "海辺のテラスがオープン",
+          "subtitle": "水辺のテーブルを予約しよう — 新鮮なシーフード、心地よい海風、美しい夕日。",
+          "image": "https://images.unsplash.com/photo-1559339352-11d035aa65de?auto=format&fit=crop&w=1600&q=70"
+        },
+        {
+          "tag": "期間限定",
+          "title": "シェフのテイスティングメニュー",
+          "subtitle": "シェフが手がける季節の5コース — 今月限定でご提供。",
+          "image": "https://images.unsplash.com/photo-1414235077428-338989a2e8c0?auto=format&fit=crop&w=1600&q=70"
+        }
+      ]
+    },
+    "highlights": {
+      "heading": "ハイライト & イベント情報",
+      "subtitle": "各店舗で開催される特別イベント、ライブ演奏、季節限定メニュー。",
+      "items": [
+        {
+          "tag": "金曜・土曜",
+          "title": "ライブジャズナイト",
+          "desc": "専属ジャズトリオがディナータイムに演奏します — 席が早く埋まるのでお早めにご予約を。",
+          "image": "https://images.unsplash.com/photo-1514933651103-005eec06c04b?auto=format&fit=crop&w=900&q=70",
+          "storenum": 1
+        },
+        {
+          "tag": "新着",
+          "title": "海辺のテラス",
+          "desc": "ビーチフロントの席がオープン。夕日を眺めながらディナーとカクテルをお楽しみください。",
+          "image": "https://images.unsplash.com/photo-1559339352-11d035aa65de?auto=format&fit=crop&w=900&q=70",
+          "storenum": 2
+        },
+        {
+          "tag": "今月",
+          "title": "シェフのテイスティングメニュー",
+          "desc": "ワインと共に楽しむ季節の5コースメニュー、期間限定でご提供。",
+          "image": "https://images.unsplash.com/photo-1414235077428-338989a2e8c0?auto=format&fit=crop&w=900&q=70",
+          "storenum": 3
+        },
+        {
+          "tag": "日曜日",
+          "title": "週末ブランチ",
+          "desc": "毎週日曜10時〜14時、ミモザ飲み放題と本格ブランチメニューをご用意。",
+          "image": "https://images.unsplash.com/photo-1551218808-94e220e084d2?auto=format&fit=crop&w=900&q=70",
+          "storenum": 1
+        }
+      ]
+    },
+    "howItWorks": {
+      "heading": "ご利用方法",
+      "steps": [
+        { "title": "検索する", "desc": "日付と人数を入力すると、空席のある店舗を表示します。" },
+        { "title": "時間を選ぶ", "desc": "ご希望の席種と時間帯を選択してください。" },
+        { "title": "予約確定", "desc": "情報を入力するだけで予約完了 — 電話も待ち時間も不要です。" }
+      ]
+    },
+    "restaurants": {
+      "heading": "予約受付中の店舗",
+      "subtitle": "{{date}}、{{count}}{{guestLabel}}での空席を表示しています",
+      "empty": "このサイトに登録されている店舗はまだありません。",
+      "loading": "店舗情報を読み込み中…"
+    },
+    "cta": {
+      "title": "もっと知りたい方へ",
+      "subtitle": "予約前にメニュー全体をチェックして、お店の魅力を確認しましょう。",
+      "button": "店舗を見る"
+    }
+  },
+  "restaurant": {
+    "seatingArea": "席種",
+    "availableTimes": "予約可能な時間",
+    "noSeatingAreas": "席種が設定されていません。",
+    "paused": "(予約停止中)",
+    "noBookableTitle": "この条件で予約可能な時間がありません",
+    "noBookableZone": "選択した日付ではこの席種は満席です — 別の席種または日付をお試しください。",
+    "noBookableNoPeriod": "選択した日付ではオンライン予約を受け付けていません。",
+    "noBookableNoTime": "この日付には予約可能な時間がもうありません — 別の日付をお試しください。",
+    "about": "{{name}}について",
+    "aboutText": "季節のメニューと温かみのある雰囲気が人気の{{cuisine}}レストランです。オンライン予約でお席を確保 — お電話は不要です。予約時間から15分以内にご来店ください。",
+    "goodToKnow": "ご利用にあたって",
+    "goodToKnowItems": [
+      "ご予約のお席は、予約時間から15分間お取り置きいたします。",
+      "大人数の場合、複数の席種に分かれてご案内する場合があります。",
+      "キャンセルや変更が必要な場合は、「予約一覧」からいつでも管理できます。"
+    ],
+    "serviceHours": "営業時間",
+    "hoursNotPublished": "この店舗の営業時間はまだ公開されていません。",
+    "contact": "お問い合わせ",
+    "highlights": "ハイライト & サービス",
+    "menuHighlights": "おすすめメニュー",
+    "viewFullMenu": "メニュー全体を見る",
+    "noMenuHighlights": "メニュー情報は近日公開予定です。"
+  },
+  "menu": {
+    "back": "店舗ページへ戻る",
+    "title": "メニュー — {{name}}",
+    "subtitle": "カテゴリー別にメニューをご覧ください。価格はUSD表示です。",
+    "loading": "メニューを読み込み中…",
+    "error": "メニューの読み込みに失敗しました",
+    "empty": "メニューはまだ公開されていません — 近日公開予定です。",
+    "vegetarian": "ベジタリアン",
+    "spicy": "辛口",
+    "signature": "看板メニュー",
+    "bookCta": "気になるメニューは見つかりましたか？今すぐご予約を。",
+    "bookNow": "テーブルを予約する"
+  },
+  "searchBar": {
+    "date": "日付",
+    "partySize": "人数",
+    "findTable": "テーブルを探す",
+    "errorMin": "1名以上で入力してください",
+    "errorMax": "最大{{max}}名までです"
+  },
+  "booking": {
+    "back": "空席情報へ戻る",
+    "title": "予約内容の確認",
+    "fullName": "お名前",
+    "fullNamePlaceholder": "山田 太郎",
+    "fullNameError": "お名前を入力してください",
+    "phone": "電話番号",
+    "phonePlaceholder": "(555) 123-4567",
+    "phoneError": "電話番号を入力してください",
+    "email": "メールアドレス（任意）",
+    "emailPlaceholder": "jane@example.com",
+    "notes": "特別なご要望（任意）",
+    "notesPlaceholder": "アレルギー、お祝い事、席のご希望など…",
+    "submit": "予約を確定する",
+    "submitting": "予約処理中…",
+    "submitError": "予約を完了できませんでした",
+    "details": "予約詳細",
+    "date": "日付",
+    "time": "時間",
+    "partySize": "人数",
+    "seating": "席種",
+    "guests": "名"
+  },
+  "confirmation": {
+    "title": "ご予約が完了しました！",
+    "subtitle": "確認メールを送信しました。お席を確保しております。",
+    "reservationNo": "予約番号",
+    "name": "お名前",
+    "date": "日付",
+    "time": "時間",
+    "partySize": "人数",
+    "guests": "名",
+    "bookAnother": "別のテーブルを予約する",
+    "viewReservations": "予約一覧を見る"
+  },
+  "myBookings": {
+    "title": "予約一覧",
+    "subtitle": "ご予約時に使用した電話番号で検索できます。",
+    "phonePlaceholder": "(555) 123-4567",
+    "search": "検索",
+    "searching": "検索中…",
+    "noResults": "この電話番号に該当する予約は見つかりませんでした。",
+    "guests": "名",
+    "reservationNo": "予約番号",
+    "cancel": "キャンセル",
+    "cancelling": "キャンセル中…",
+    "confirmCancel": "予約 {{ref}} をキャンセルしますか？",
+    "errorLoad": "予約情報を読み込めませんでした",
+    "errorCancel": "予約をキャンセルできませんでした",
+    "upcoming": "今後の予約",
+    "past": "過去の予約",
+    "viewMenu": "メニューを見る",
+    "ctaTitle": "次のご来店もお待ちしています",
+    "ctaSubtitle": "他の店舗もチェックして、数秒で次のご予約を。",
+    "ctaButton": "店舗を見る",
+    "reviewPrompt": "ご来店はいかがでしたか？",
+    "reviewPlaceholder": "感想をお聞かせください（任意）…",
+    "reviewSubmit": "レビューを送信",
+    "reviewThanks": "ご意見ありがとうございました！",
+    "status": {
+      "1": "新規",
+      "2": "確定済み",
+      "3": "キャンセル済み",
+      "4": "予約済み",
+      "5": "期限超過",
+      "6": "来店済み",
+      "7": "無断キャンセル",
+      "8": "終了",
+      "unknown": "不明"
+    }
+  }
+}

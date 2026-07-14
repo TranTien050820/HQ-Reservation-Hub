@@ -1,0 +1,21 @@
+@import "tailwindcss";
+
+@theme {
+  --font-sans: "Inter", system-ui, "Segoe UI", Roboto, sans-serif;
+  --color-resy-red: #fa3c3c;
+  --color-resy-dark: #1a1a1a;
+}
+
+html {
+  overflow-x: hidden;
+}
+
+body {
+  @apply bg-white text-resy-dark font-sans antialiased;
+  margin: 0;
+  overflow-x: hidden;
+}
+
+#root {
+  min-height: 100svh;
+}

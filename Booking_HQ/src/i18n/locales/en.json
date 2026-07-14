@@ -1,0 +1,229 @@
+{
+  "header": {
+    "findStore": "Find a store",
+    "myReservations": "My reservations",
+    "language": "Language"
+  },
+  "footer": {
+    "text": "© {{year}} HQ WebOffice Reservations"
+  },
+  "common": {
+    "guest": "guest",
+    "guests": "guests",
+    "loading": "Loading…",
+    "viewMenu": "View menu",
+    "viewAvailability": "View availability"
+  },
+  "home": {
+    "hero": {
+      "title": "Book the best tables in town",
+      "subtitle": "Real-time availability across our restaurants. Instant confirmation, no phone calls.",
+      "explore": "Book a table",
+      "slides": [
+        {
+          "tag": "Popular",
+          "title": "Book the best tables in town",
+          "subtitle": "Real-time availability across our restaurants. Instant confirmation, no phone calls.",
+          "image": "https://images.unsplash.com/photo-1517248135467-4c7edcad34c4?auto=format&fit=crop&w=1600&q=70"
+        },
+        {
+          "tag": "Tonight",
+          "title": "Live music every weekend",
+          "subtitle": "Dinner and a show — live jazz and acoustic sets at select locations, Friday & Saturday nights.",
+          "image": "https://images.unsplash.com/photo-1514933651103-005eec06c04b?auto=format&fit=crop&w=1600&q=70"
+        },
+        {
+          "tag": "New",
+          "title": "Seaside terraces now open",
+          "subtitle": "Reserve a table by the water — fresh seafood, ocean breeze and sunset views.",
+          "image": "https://images.unsplash.com/photo-1559339352-11d035aa65de?auto=format&fit=crop&w=1600&q=70"
+        },
+        {
+          "tag": "Limited time",
+          "title": "Chef's tasting menu",
+          "subtitle": "A five-course seasonal journey crafted by our head chefs — available this month only.",
+          "image": "https://images.unsplash.com/photo-1414235077428-338989a2e8c0?auto=format&fit=crop&w=1600&q=70"
+        }
+      ]
+    },
+    "highlights": {
+      "heading": "Highlights & upcoming shows",
+      "subtitle": "Special events, live entertainment and seasonal menus across our restaurants.",
+      "items": [
+        {
+          "tag": "Friday & Saturday",
+          "title": "Live Jazz Nights",
+          "desc": "Resident jazz trio plays through dinner service — book early, tables fill fast.",
+          "image": "https://images.unsplash.com/photo-1514933651103-005eec06c04b?auto=format&fit=crop&w=900&q=70",
+          "storenum": 1
+        },
+        {
+          "tag": "New",
+          "title": "Seaside Terrace",
+          "desc": "Our beachfront seating area is now open for sunset dinners and cocktails.",
+          "image": "https://images.unsplash.com/photo-1559339352-11d035aa65de?auto=format&fit=crop&w=900&q=70",
+          "storenum": 2
+        },
+        {
+          "tag": "This month",
+          "title": "Chef's Tasting Menu",
+          "desc": "A five-course seasonal menu paired with wine, available for a limited time.",
+          "image": "https://images.unsplash.com/photo-1414235077428-338989a2e8c0?auto=format&fit=crop&w=900&q=70",
+          "storenum": 3
+        },
+        {
+          "tag": "Sundays",
+          "title": "Weekend Brunch",
+          "desc": "Bottomless mimosas and a full brunch menu, every Sunday from 10am to 2pm.",
+          "image": "https://images.unsplash.com/photo-1551218808-94e220e084d2?auto=format&fit=crop&w=900&q=70",
+          "storenum": 1
+        }
+      ]
+    },
+    "howItWorks": {
+      "heading": "How it works",
+      "steps": [
+        { "title": "Search", "desc": "Tell us the date and party size, and we'll show you restaurants with open tables." },
+        { "title": "Pick a time", "desc": "Choose a seating area and time slot that works for you." },
+        { "title": "Confirm", "desc": "Add your details and you're booked — no calls, no waiting." }
+      ]
+    },
+    "restaurants": {
+      "heading": "Restaurants taking reservations",
+      "subtitle": "Showing tables for {{count}} {{guestLabel}} on {{date}}",
+      "empty": "No restaurants are configured for this site yet.",
+      "loading": "Loading restaurants…"
+    },
+    "cta": {
+      "title": "Hungry for more?",
+      "subtitle": "Browse full menus before you book, so you know exactly what's on offer.",
+      "button": "Explore restaurants"
+    }
+  },
+  "restaurant": {
+    "seatingArea": "Seating area",
+    "availableTimes": "Available times",
+    "noSeatingAreas": "No seating areas configured.",
+    "paused": "(paused)",
+    "noBookableTitle": "No bookable times for this search",
+    "noBookableZone": "This seating area is fully booked for the date you selected — try another area or date.",
+    "noBookableNoPeriod": "This restaurant isn't taking online reservations for the date you selected.",
+    "noBookableNoTime": "No more bookable times remain for this date — try another date.",
+    "about": "About {{name}}",
+    "aboutText": "A {{cuisine}} spot known for seasonal menus and a warm dining room. Reserve online and we'll hold your table — no calls needed. Arrive within 15 minutes of your reservation time to keep your spot.",
+    "goodToKnow": "Good to know",
+    "goodToKnowItems": [
+      "Tables are held for 15 minutes past the reservation time.",
+      "Large parties may be split across our seating areas.",
+      "Need to cancel or change plans? Manage it anytime from \"My reservations\"."
+    ],
+    "serviceHours": "Service hours",
+    "hoursNotPublished": "Hours haven't been published for this location yet.",
+    "contact": "Contact",
+    "highlights": "Highlights & services",
+    "menuHighlights": "Menu highlights",
+    "viewFullMenu": "See full menu",
+    "noMenuHighlights": "Menu details coming soon."
+  },
+  "menu": {
+    "back": "Back to restaurant",
+    "title": "Menu — {{name}}",
+    "subtitle": "Browse our dishes by category. Prices are in USD.",
+    "loading": "Loading menu…",
+    "error": "Failed to load menu",
+    "empty": "The menu hasn't been published yet — check back soon.",
+    "vegetarian": "Vegetarian",
+    "spicy": "Spicy",
+    "signature": "Signature",
+    "bookCta": "Ready to dine? Reserve a table now.",
+    "bookNow": "Book a table"
+  },
+  "searchBar": {
+    "date": "Date",
+    "partySize": "Party size",
+    "findTable": "Find a table",
+    "errorMin": "At least 1 guest",
+    "errorMax": "At most {{max}} guests"
+  },
+  "booking": {
+    "back": "Back to availability",
+    "title": "Confirm your reservation",
+    "fullName": "Full name",
+    "fullNamePlaceholder": "Jane Doe",
+    "fullNameError": "Please enter your name",
+    "phone": "Phone number",
+    "phonePlaceholder": "(555) 123-4567",
+    "phoneError": "Please enter your phone number",
+    "email": "Email (optional)",
+    "emailPlaceholder": "jane@example.com",
+    "notes": "Special requests (optional)",
+    "notesPlaceholder": "Allergies, celebrations, seating preferences…",
+    "submit": "Complete reservation",
+    "submitting": "Booking…",
+    "submitError": "Could not complete booking",
+    "details": "Reservation details",
+    "date": "Date",
+    "time": "Time",
+    "partySize": "Party size",
+    "seating": "Seating",
+    "guests": "guests",
+    "extraFieldRequired": "This field is required"
+  },
+  "confirmation": {
+    "title": "You're booked!",
+    "subtitle": "A confirmation has been sent and your table is reserved.",
+    "reservationNo": "Reservation No.",
+    "name": "Name",
+    "date": "Date",
+    "time": "Time",
+    "partySize": "Party size",
+    "guests": "guests",
+    "bookAnother": "Book another table",
+    "viewReservations": "View my reservations"
+  },
+  "bookingDetail": {
+    "back": "Back",
+    "notFound": "This reservation couldn't be found — go back and open it from your reservation list.",
+    "viewMenu": "View menu",
+    "seatTables": "Table assignment",
+    "tableLabel": "Table {{num}}"
+  },
+  "myBookings": {
+    "title": "My reservations",
+    "subtitle": "Look up your bookings using the phone number you reserved with.",
+    "phonePlaceholder": "(555) 123-4567",
+    "search": "Search",
+    "searching": "Searching…",
+    "noResults": "No reservations found for that phone number.",
+    "guests": "guests",
+    "reservationNo": "Reservation No.",
+    "cancel": "Cancel",
+    "cancelling": "Cancelling…",
+    "confirmCancel": "Cancel reservation {{ref}}?",
+    "errorLoad": "Could not load reservations",
+    "errorCancel": "Could not cancel reservation",
+    "upcoming": "Upcoming",
+    "past": "Past reservations",
+    "viewDetails": "View details",
+    "showMore": "Show more",
+    "ctaTitle": "Ready for your next visit?",
+    "ctaSubtitle": "Discover more restaurants and book your next table in seconds.",
+    "ctaButton": "Explore restaurants",
+    "reviewPrompt": "How was your visit?",
+    "reviewPlaceholder": "Tell us more (optional)…",
+    "reviewSubmit": "Submit review",
+    "reviewThanks": "Thanks for your feedback!",
+    "status": {
+      "1": "Pending confirmation",
+      "2": "Confirmed",
+      "3": "Cancelled by restaurant",
+      "4": "Seated",
+      "5": "Overdue",
+      "6": "Arrived",
+      "7": "No-show",
+      "8": "Arrived",
+      "100": "Not confirmed by restaurant",
+      "unknown": "Unknown"
+    }
+  }
+}
