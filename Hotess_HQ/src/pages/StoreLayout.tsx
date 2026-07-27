@@ -45,7 +45,7 @@ function StoreLayoutInner() {
       <div className="mx-auto w-full max-w-[1200px] shrink-0 px-4 pt-8 sm:px-8">
         <AppHeader />
       </div>
-      <main className="mx-auto flex w-full min-h-0 max-w-[1200px] flex-1 flex-col justify-center overflow-y-auto px-4 py-8 sm:px-8">
+      <main className="mx-auto flex w-full min-h-0 max-w-[1200px] flex-1 flex-col overflow-y-auto px-4 py-8 sm:px-8">
         <Outlet />
       </main>
     </div>

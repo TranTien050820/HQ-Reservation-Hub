@@ -7,14 +7,14 @@ import { useAuth } from '../store/AuthContext';
 import { useToast } from '../components/ToastProvider';
 import { fetchAvailableSlots } from '../api/availableSlots';
 import { createBooking } from '../api/bookings';
-import { todayStr } from '../api/mockData';
+import { todayStr } from '../utils/date';
 import { BookingStatus } from '../types';
 
 interface FormValues {
   bookingPhone: string;
   bookingName: string;
-  zoneId: string;
-  numOfGuest: number;
+  zoneID: string;
+  partySize: number;
   notes: string;
 }
 
@@ -32,34 +32,34 @@ export function BookingFormScreen() {
     handleSubmit,
     watch,
     formState: { errors },
-  } = useForm<FormValues>({ defaultValues: { numOfGuest: 2 } });
+  } = useForm<FormValues>({ defaultValues: { partySize: 2 } });
 
   const onSubmit = async (values: FormValues) => {
     if (!linkInfo) return;
     setSubmitting(true);
     setZoneFull(false);
     try {
-      if (values.zoneId) {
+      if (values.zoneID) {
         const slots = await fetchAvailableSlots(linkInfo, todayStr());
-        const slot = slots.find((s) => s.zoneId === Number(values.zoneId));
-        if (slot && slot.free <= 0) {
+        const slot = slots.find((s) => s.zoneID === Number(values.zoneID));
+        if (slot && (slot.numberOfUnused ?? 0) <= 0) {
           setZoneFull(true);
           setSubmitting(false);
           return;
         }
       }
       await createBooking({
-        bookingName: values.bookingName,
-        bookingPhone: values.bookingPhone,
-        reservationDate: todayStr(),
-        numOfGuest: Number(values.numOfGuest),
-        zoneId: values.zoneId ? Number(values.zoneId) : undefined,
-        status: BookingStatus.Confirm,
-        notes: values.notes,
         siteId: linkInfo.siteId,
         sNum: linkInfo.sNum,
         statNum: linkInfo.statNum,
-        channelId: linkInfo.channelId,
+        channelID: linkInfo.channelId,
+        bookingName: values.bookingName,
+        bookingPhone: values.bookingPhone,
+        reservationDate: todayStr(),
+        partySize: Number(values.partySize),
+        zoneID: values.zoneID ? Number(values.zoneID) : undefined,
+        status: BookingStatus.Confirm,
+        customerNote: values.notes,
         userCreated: user?.userId,
       });
       toast.success(t('booking.success'));
@@ -80,7 +80,7 @@ export function BookingFormScreen() {
           <button
             onClick={() => navigate('../checkin')}
             aria-label={t('common.back')}
-            className="touch-btn btn-secondary flex h-14 w-14 shrink-0 items-center justify-center rounded-full text-lg"
+            className="chip-btn btn-secondary flex h-11 w-11 shrink-0 items-center justify-center rounded-full text-base"
           >
             ←
           </button>
@@ -108,11 +108,11 @@ export function BookingFormScreen() {
               <label className="field-label">{t('booking.zone')}</label>
               <select
                 className="field touch-btn px-3"
-                {...register('zoneId')}
+                {...register('zoneID')}
               >
                 <option value="">{t('booking.selectZone')}</option>
                 {zones.map((z) => (
-                  <option key={z.zoneId} value={z.zoneId}>
+                  <option key={z.zoneID} value={z.zoneID}>
                     {z.zoneName}
                   </option>
                 ))}
@@ -124,7 +124,7 @@ export function BookingFormScreen() {
                 type="number"
                 min={1}
                 className="field touch-btn px-4"
-                {...register('numOfGuest', { required: true, min: 1, valueAsNumber: true })}
+                {...register('partySize', { required: true, min: 1, valueAsNumber: true })}
               />
             </div>
           </div>

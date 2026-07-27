@@ -12,9 +12,12 @@ export function AppHeader() {
 
   return (
     <header className="flex flex-wrap items-center justify-between gap-4">
-      <h1 className="text-2xl font-bold tracking-tight text-white sm:text-3xl">
-        Hotess<span className="text-[#ef4444]">Reservation</span>
-      </h1>
+      <div className="flex flex-col items-start gap-1">
+        <img src="/media/logo.png" alt="Logo" className="h-12 w-auto object-contain" />
+        <h1 className="text-2xl font-bold tracking-tight text-white sm:text-3xl">
+          Hotess<span className="text-[#ef4444]">Reservation</span>
+        </h1>
+      </div>
       <div className="flex flex-wrap items-center gap-4 text-sm text-slate-300">
         <select
           aria-label={t('header.language')}

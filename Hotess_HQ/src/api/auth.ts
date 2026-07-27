@@ -1,32 +1,27 @@
 import { http } from './http';
 import type { ApiEnvelope, LoginResponseData } from '../types';
-import { mockLogin } from './mockData';
 
+/** POST /api/auth/login — body { userName, password }. */
 export async function login(userName: string, password: string): Promise<LoginResponseData> {
-  try {
-    const res = await http.post<ApiEnvelope<LoginResponseData>>('/api/auth/login', {
-      UserName: userName,
-      Password: password,
-    });
-    return res.data.data;
-  } catch (err) {
-    console.warn('[auth] login API unavailable, using mock fallback', err);
-    if (!userName || !password) throw new Error('Username and password are required');
-    return { ...mockLogin, user: { ...mockLogin.user, userName, fullName: userName } };
-  }
+  const res = await http.post<ApiEnvelope<LoginResponseData>>('/api/auth/login', { userName, password });
+  return res.data.data;
 }
 
+/**
+ * POST /api/auth/refresh-token — body { accessToken, refreshToken }, response
+ * is the same LoginResponseDTO shape as login (roles/sites empty on refresh).
+ * Note: this is NOT "/auth/refresh" and does NOT use snake_case
+ * access_token/refresh_token — those belong to an unrelated, outdated helper
+ * once copied from HQ_FE_V2's apiClient.ts; the real AuthController route and
+ * payload are as implemented here.
+ */
 export async function refreshAccessToken(
+  accessToken: string,
   refreshToken: string,
 ): Promise<{ accessToken: string; refreshToken: string }> {
-  try {
-    const res = await http.post<ApiEnvelope<{ accessToken: string; refreshToken: string }>>(
-      '/api/auth/refresh',
-      { refreshToken },
-    );
-    return res.data.data;
-  } catch (err) {
-    console.warn('[auth] refresh API unavailable, using mock fallback', err);
-    return { accessToken: 'mock-access-token', refreshToken };
-  }
+  const res = await http.post<ApiEnvelope<LoginResponseData>>('/api/auth/refresh-token', {
+    accessToken,
+    refreshToken,
+  });
+  return { accessToken: res.data.data.accessToken, refreshToken: res.data.data.refreshToken };
 }

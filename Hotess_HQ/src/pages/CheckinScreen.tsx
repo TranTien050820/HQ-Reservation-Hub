@@ -8,8 +8,8 @@ import { QrScannerModal } from '../components/QrScannerModal';
 import { SearchResultsModal } from '../components/SearchResultsModal';
 import { searchBookings } from '../api/bookings';
 import { fetchWaitlists } from '../api/waitlists';
-import { BookingStatus, type ReservationBooking } from '../types';
-import { todayStr } from '../api/mockData';
+import { BookingStatus, WaitlistStatus, type ReservationBooking } from '../types';
+import { todayStr } from '../utils/date';
 
 export function CheckinScreen() {
   const { t } = useTranslation();
@@ -25,8 +25,10 @@ export function CheckinScreen() {
 
   useEffect(() => {
     if (!linkInfo) return;
-    fetchWaitlists(linkInfo)
-      .then((list) => setWaitlistCount(list.filter((w) => w.status === 0).length))
+    // Status is filtered server-side here — this badge only needs the count of
+    // guests still waiting, not the whole day's list.
+    fetchWaitlists(linkInfo, { expectedDate: todayStr(), status: WaitlistStatus.Waiting, pageSize: 1 })
+      .then((page) => setWaitlistCount(page.totalRecords))
       .catch(() => setWaitlistCount(0));
   }, [linkInfo]);
 
@@ -37,14 +39,13 @@ export function CheckinScreen() {
       setSearched(true);
       try {
         const trimmed = raw.trim();
+        // The backend only accepts one keyword field per request, so probe
+        // ReservationNo and BookingPhone in parallel and merge the results.
         const [byCode, byPhone] = await Promise.all([
           searchBookings({ ...linkInfo, reservationNo: trimmed, reservationDate: todayStr() }),
           searchBookings({ ...linkInfo, bookingPhone: trimmed, reservationDate: todayStr() }),
         ]);
         // Only exclude bookings that can no longer be checked in today.
-        // Anything else (New, Confirm, Reserved, Overdue) should still show
-        // up, otherwise a second booking on the same phone can silently
-        // disappear if its status doesn't exactly match what we expect.
         const NOT_CHECKINABLE = new Set<number>([
           BookingStatus.Cancel,
           BookingStatus.Seated,
@@ -54,7 +55,7 @@ export function CheckinScreen() {
         const isCheckinable = (b: ReservationBooking) => !NOT_CHECKINABLE.has(Number(b.status));
         const merged = new Map<number, ReservationBooking>();
         for (const b of [...byCode.items, ...byPhone.items]) {
-          if (isCheckinable(b)) merged.set(b.reservationId, b);
+          if (isCheckinable(b)) merged.set(b.globalId, b);
         }
         setResults(Array.from(merged.values()));
       } catch {
@@ -94,13 +95,13 @@ export function CheckinScreen() {
         <h1 className="mb-2 text-3xl font-bold text-white">{t('checkin.title')}</h1>
         <p className="mb-8 text-slate-400">{t('checkin.scanDesc')}</p>
 
-        <div className="flex flex-col gap-2 rounded-full border border-white/10 bg-black/30 p-2 sm:flex-row">
+        <div className="flex flex-col gap-2 rounded-2xl border border-white/10 bg-black/30 p-1.5 sm:flex-row sm:rounded-full">
           <input
             value={query}
             onChange={(e) => setQuery(e.target.value)}
             onKeyDown={(e) => e.key === 'Enter' && query.trim() && runSearch(query)}
             placeholder={t('checkin.searchPlaceholder')}
-            className="touch-btn flex-1 rounded-full border-none bg-transparent px-5 text-white outline-none placeholder:text-slate-500"
+            className="min-h-[40px] flex-1 rounded-xl border border-white/10 bg-black/20 px-5 text-white outline-none placeholder:text-slate-500 sm:rounded-full sm:border-none sm:bg-transparent"
           />
           <button
             onClick={() => (query.trim() ? runSearch(query) : setQrOpen(true))}

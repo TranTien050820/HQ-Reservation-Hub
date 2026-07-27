@@ -23,9 +23,7 @@ export function LoginPage() {
     <div className="flex min-h-screen items-center justify-center p-4">
       <form onSubmit={onSubmit} className="glass-card w-full max-w-sm p-8">
         <div className="mb-6 flex flex-col items-center text-center">
-          <div className="mb-3 flex h-14 w-14 items-center justify-center rounded-2xl bg-gradient-to-br from-[#ef4444] to-[#dc2626] text-2xl font-bold text-white shadow-[0_6px_20px_rgba(239,68,68,0.4)]">
-            H
-          </div>
+          <img src="/media/logo.png" alt="Logo" className="mb-3 h-14 w-auto object-contain" />
           <h1 className="text-2xl font-bold text-white">{t('login.title')}</h1>
         </div>
         <label className="field-label">{t('login.username')}</label>
