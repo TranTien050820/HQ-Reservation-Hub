@@ -22,9 +22,9 @@ function StoreLayoutInner() {
   if (error || !linkInfo) {
     return (
       <div className="flex min-h-screen items-center justify-center p-4">
-        <div className="glass-card max-w-sm p-8 text-center">
-          <p className="mb-4 text-slate-300">{t('login.storeError')}</p>
-          <p className="mb-4 text-xs text-slate-500">publicKey: {publicKey || '(none)'}</p>
+        <div className="glass-card max-w-sm p-6 text-center">
+          <p className="mb-3 text-muted">{t('login.storeError')}</p>
+          <p className="mb-4 text-xs text-faint">publicKey: {publicKey || '(none)'}</p>
           <button
             onClick={refetch}
             className="touch-btn btn-primary rounded-xl px-5 font-semibold"
@@ -42,11 +42,15 @@ function StoreLayoutInner() {
 
   return (
     <div className="flex h-screen flex-col overflow-hidden">
-      <div className="mx-auto w-full max-w-[1200px] shrink-0 px-4 pt-8 sm:px-8">
+      {/* The bar spans the full width; only the content inside it is contained,
+          so it reads as the app's chrome rather than a floating widget. */}
+      <div className="shrink-0">
         <AppHeader />
       </div>
-      <main className="mx-auto flex w-full min-h-0 max-w-[1200px] flex-1 flex-col overflow-y-auto px-4 py-8 sm:px-8">
-        <Outlet />
+      <main className="min-h-0 flex-1 overflow-y-auto">
+        <div className="mx-auto flex min-h-full w-full max-w-[1400px] flex-col px-4 py-4 sm:px-6 sm:py-5">
+          <Outlet />
+        </div>
       </main>
     </div>
   );

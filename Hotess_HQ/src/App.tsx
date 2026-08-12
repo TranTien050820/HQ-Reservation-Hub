@@ -1,5 +1,6 @@
 import { BrowserRouter, Routes, Route } from 'react-router-dom';
 import { AuthProvider } from './store/AuthContext';
+import { ThemeProvider } from './store/ThemeContext';
 import { ToastProvider } from './components/ToastProvider';
 import { ErrorBoundary } from './components/ErrorBoundary';
 import { LandingPage } from './pages/LandingPage';
@@ -12,22 +13,24 @@ import { WaitlistScreen } from './pages/WaitlistScreen';
 export default function App() {
   return (
     <ErrorBoundary>
-      <AuthProvider>
-        <ToastProvider>
-          <BrowserRouter>
-            <Routes>
-              <Route path="/" element={<LandingPage />} />
-              <Route path="/:publicKey" element={<StoreLayout />}>
-                <Route index element={<StoreIndexRedirect />} />
-                <Route path="checkin" element={<CheckinScreen />} />
-                <Route path="booking" element={<BookingFormScreen />} />
-                <Route path="seating" element={<SeatingScreen />} />
-                <Route path="waitlist" element={<WaitlistScreen />} />
-              </Route>
-            </Routes>
-          </BrowserRouter>
-        </ToastProvider>
-      </AuthProvider>
+      <ThemeProvider>
+        <AuthProvider>
+          <ToastProvider>
+            <BrowserRouter>
+              <Routes>
+                <Route path="/" element={<LandingPage />} />
+                <Route path="/:publicKey" element={<StoreLayout />}>
+                  <Route index element={<StoreIndexRedirect />} />
+                  <Route path="checkin" element={<CheckinScreen />} />
+                  <Route path="booking" element={<BookingFormScreen />} />
+                  <Route path="seating" element={<SeatingScreen />} />
+                  <Route path="waitlist" element={<WaitlistScreen />} />
+                </Route>
+              </Routes>
+            </BrowserRouter>
+          </ToastProvider>
+        </AuthProvider>
+      </ThemeProvider>
     </ErrorBoundary>
   );
 }

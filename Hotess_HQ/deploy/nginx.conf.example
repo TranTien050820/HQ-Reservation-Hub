@@ -1,0 +1,48 @@
+# Reverse proxy for the built Hotess_HQ app (dist/).
+#
+# The app is built with an empty VITE_API_BASE_URL, so the browser issues
+# same-origin requests to "/api/...". This server block serves the static
+# bundle and forwards /api to the real HQ-WebOffice-API. Changing the API
+# address is a config edit + `nginx -s reload` - no rebuild required.
+
+server {
+    listen 80;
+    server_name hostess.your-domain.com;
+
+    root /var/www/hotess-hq;   # contents of dist/
+    index index.html;
+
+    location /api/ {
+        # --- The real API address: change this one line -----------------
+        # No trailing slash and no variable here: nginx then forwards the
+        # original request URI unchanged, so /api/foo -> <host>/api/foo.
+        proxy_pass https://api.your-domain.com;
+        proxy_http_version 1.1;
+        proxy_set_header Host              $proxy_host;
+        proxy_set_header X-Real-IP         $remote_addr;
+        proxy_set_header X-Forwarded-For   $proxy_add_x_forwarded_for;
+        proxy_set_header X-Forwarded-Proto $scheme;
+
+        # The backend answers HTTP 200 with the failure inside the envelope,
+        # so no error-page interception is needed - just pass bodies through.
+        proxy_buffering off;
+
+        # Uncomment if the API uses a self-signed certificate.
+        # proxy_ssl_verify off;
+    }
+
+    # BrowserRouter: every unknown path must fall back to index.html.
+    location / {
+        try_files $uri $uri/ /index.html;
+    }
+
+    # Hashed assets are immutable; index.html must never be cached.
+    location /assets/ {
+        expires 1y;
+        add_header Cache-Control "public, immutable";
+    }
+
+    location = /index.html {
+        add_header Cache-Control "no-store";
+    }
+}

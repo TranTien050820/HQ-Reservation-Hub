@@ -3,7 +3,7 @@ import { useTranslation } from 'react-i18next';
 import { QRCodeSVG } from 'qrcode.react';
 import { ReservationStatus, type ReservationBooking } from '../api/types';
 import { useStoreData } from '../store/StoreDataContext';
-import { getEffectiveStatus, statusBadgeClass } from '../lib/bookingStatus';
+import { getEffectiveStatus, isUpcomingBooking, statusBadgeClass } from '../lib/bookingStatus';
 import { formatDateHeadingWithYear, formatTime } from '../lib/i18nFormat';
 import { restaurantPhoto } from '../lib/restaurantImages';
 
@@ -31,6 +31,7 @@ export default function BookingDetailPage() {
 
   const effectiveStatus = getEffectiveStatus(booking);
   const reservationRef = booking.reservationNo ?? `#${booking.globalId}`;
+  const canPreOrder = isUpcomingBooking(booking);
 
   return (
     <div className="mx-auto max-w-xl px-6 py-10">
@@ -108,6 +109,18 @@ export default function BookingDetailPage() {
       )}
 
       <div className="mt-6 flex flex-col gap-4">
+        {/* Only while the visit is still ahead: a `scheduled` order is released to the
+            kitchen at check-in, so ordering onto a finished booking has nowhere to land. */}
+        {canPreOrder && booking.reservationNo && (
+          <Link
+            to={`/${publicKey}/preorder/${encodeURIComponent(booking.reservationNo)}`}
+            state={{ booking }}
+            className="flex items-center justify-between rounded-xl bg-resy-red px-5 py-4 text-sm font-semibold text-white transition-colors hover:bg-red-600"
+          >
+            {t('preorder.ctaButton')} →
+          </Link>
+        )}
+
         <Link
           to={`/${publicKey}/menu`}
           className="flex items-center justify-between rounded-xl border border-neutral-200 px-5 py-4 text-sm font-semibold text-neutral-700 transition-colors hover:border-resy-red hover:text-resy-red"

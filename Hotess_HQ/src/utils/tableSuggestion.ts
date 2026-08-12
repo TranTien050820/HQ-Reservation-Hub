@@ -20,6 +20,20 @@ import type { TableSetup } from '../types';
  *    efficient mixed combo is surfaced, not buried under many same-size ones.
  */
 
+/**
+ * How much spare seating a selection may carry before the hostess is warned.
+ *
+ * Sitting 2 guests at a 4-top is everyday practice, so a small surplus stays
+ * silent. Handing a party of 2 four tables and 10 seats is a mis-click that
+ * strands most of the section, so the warning only fires once the selection
+ * both *doubles* the head count and wastes a whole table's worth of seats.
+ */
+const EXCESS_SEAT_LIMIT = 4;
+
+export function isExcessCapacity(selectedCapacity: number, guests: number): boolean {
+  return guests > 0 && selectedCapacity - guests >= EXCESS_SEAT_LIMIT && selectedCapacity >= guests * 2;
+}
+
 const MAX_COMBO_SIZE = 5;
 const MAX_RESULTS = 10;
 /** A "suggestion" should stay a short, glanceable shortlist — not every free table in the zone. */

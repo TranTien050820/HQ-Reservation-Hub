@@ -8,11 +8,15 @@ import { TableGrid } from './TableGrid';
 import { TableLegend } from './TableLegend';
 import { BookingDetailModal } from './BookingDetailModal';
 import { PeriodTimePicker } from './PeriodTimePicker';
+import { AlertIcon, ArrowLeftIcon, StarIcon } from './icons';
 import { searchBookings } from '../api/bookings';
+import { fetchAllPages } from '../api/paginate';
 import { updateWaitlist } from '../api/waitlists';
-import { buildTableOccupancy } from '../utils/tableOccupancy';
-import { suggestTables } from '../utils/tableSuggestion';
-import { computeSeatWindow, toMinutes } from '../utils/timeWindow';
+import { usePosOpenTables } from '../hooks/usePosOpenTables';
+import { apiErrorMessage } from '../utils/apiError';
+import { buildTableOccupancy, isTableBlocked, isTableReservable } from '../utils/tableOccupancy';
+import { isExcessCapacity, suggestTables } from '../utils/tableSuggestion';
+import { computeSeatWindow, isBeyondCurrentUse, toMinutes } from '../utils/timeWindow';
 import { formatHHmm, nowHHmm, toTimeSpan } from '../utils/waitlist';
 import { todayStr } from '../utils/date';
 import { WaitlistStatus, type ReservationBooking, type ReservationWaitlist, type TableSetup } from '../types';
@@ -57,6 +61,8 @@ export function WaitlistSeatModal({ entry, onClose, onSeated }: WaitlistSeatModa
     return wanted < now ? now : wanted;
   });
   const [selectedTablenums, setSelectedTablenums] = useState<Set<number>>(new Set());
+  /** Off by default: one table per guest, so a tap replaces the previous pick instead of stacking tables up. */
+  const [mergeMode, setMergeMode] = useState(false);
   const [bookings, setBookings] = useState<ReservationBooking[]>([]);
   const [detailBooking, setDetailBooking] = useState<ReservationBooking | null>(null);
   const [loading, setLoading] = useState(true);
@@ -64,16 +70,22 @@ export function WaitlistSeatModal({ entry, onClose, onSeated }: WaitlistSeatModa
   /** Table to bring into view after a suggestion is applied. */
   const [scrollTarget, setScrollTarget] = useState<number | null>(null);
 
+  // A waitlist guest has no prior hold, so every table the POS has a check open
+  // on is off limits — those tables already have people on them.
+  const { posOpenTablenums, posOpenFailed, reloadPosOpenTables } = usePosOpenTables(linkInfo);
+
   useEffect(() => {
     if (!linkInfo) return;
     let cancelled = false;
     setLoading(true);
-    searchBookings({ ...linkInfo, reservationDate: date, pageSize: 500 })
+    // Every page, not one big one: a booking past the page ceiling would leave
+    // its table showing as free and get the guest double-seated.
+    fetchAllPages((pageIndex, pageSize) => searchBookings({ ...linkInfo, reservationDate: date, pageIndex, pageSize }))
       .then((page) => {
         if (!cancelled) setBookings(page.items);
       })
-      .catch(() => {
-        if (!cancelled) toast.error(t('common.error'));
+      .catch((err) => {
+        if (!cancelled) toast.error(apiErrorMessage(err, t('common.error')));
       })
       .finally(() => {
         if (!cancelled) setLoading(false);
@@ -111,21 +123,47 @@ export function WaitlistSeatModal({ entry, onClose, onSeated }: WaitlistSeatModa
 
   // Conflicts are judged against the window we're about to book, not against
   // "now" — a guest expected at 19:00 must not be blocked by a lunch hold.
+  // This action holds the table in advance (status -> Reserved), it doesn't walk
+  // anyone onto it, so a slot hours ahead (e.g. 21:00 picked at 14:00) may take a
+  // table that is busy right now — POS check open or a party mid-meal — because
+  // they'll be gone by then. A table *booked* for 21:00 is still off limits, and
+  // holding for the next few hours still respects who's on the table now.
+  const ignoreCurrentUse = useMemo(() => isBeyondCurrentUse(date, startTime), [date, startTime]);
+
   const tableInfo = useMemo(() => {
     const startMinutes = toMinutes(reserStartTime);
     const endMinutes = toMinutes(reserEndTime);
-    if (startMinutes == null || endMinutes == null) return buildTableOccupancy(bookings, { blocking: 'all-day' });
-    return buildTableOccupancy(bookings, { blocking: { startMinutes, endMinutes } });
-  }, [bookings, reserStartTime, reserEndTime]);
+    if (startMinutes == null || endMinutes == null) {
+      return buildTableOccupancy(bookings, { blocking: 'all-day', posOpenTablenums });
+    }
+    return buildTableOccupancy(bookings, {
+      blocking: { startMinutes, endMinutes },
+      posOpenTablenums,
+      ignoreCurrentUse,
+    });
+  }, [bookings, reserStartTime, reserEndTime, posOpenTablenums, ignoreCurrentUse]);
 
   const bookingsByGlobalId = useMemo(() => new Map(bookings.map((b) => [b.globalId, b])), [bookings]);
 
+  // `upcoming` tables are free for the window we're seating into, so they stay
+  // suggestible — only a hold that actually overlaps takes a table out.
   const freeTables = useMemo(
-    () => tables.filter((tb) => tb.canreserve && !tableInfo.get(tb.tablenum)?.state),
+    () => tables.filter((tb) => isTableReservable(tb) && !isTableBlocked(tableInfo.get(tb.tablenum))),
     [tables, tableInfo],
   );
 
-  const suggestion = useMemo(() => suggestTables(freeTables, partySize), [freeTables, partySize]);
+  /** Whole store, not just the open zone — the submit guard has to judge every picked table. */
+  const tableByNum = useMemo(() => new Map(allTables.map((tb) => [tb.tablenum, tb])), [allTables]);
+
+  // A table that is busy right now is pickable for a far-off slot but shouldn't
+  // be *recommended* while genuinely quiet tables exist, so it only enters the
+  // suggestions when nothing else can seat the party.
+  const suggestion = useMemo(() => {
+    const quiet = freeTables.filter((tb) => tableInfo.get(tb.tablenum)?.advisory !== true);
+    const preferred = suggestTables(quiet, partySize);
+    if (preferred.single.length > 0 || preferred.combos.length > 0) return preferred;
+    return suggestTables(freeTables, partySize);
+  }, [freeTables, tableInfo, partySize]);
 
   // suggestTables returns either single tables that fit outright or, when none
   // does, merge combos — flatten both into one chip list so the strip renders
@@ -155,13 +193,25 @@ export function WaitlistSeatModal({ entry, onClose, onSeated }: WaitlistSeatModa
   const toggleTable = (table: TableSetup) => {
     setSelectedTablenums((prev) => {
       const next = new Set(prev);
-      if (next.has(table.tablenum)) next.delete(table.tablenum);
-      else next.add(table.tablenum);
+      if (next.has(table.tablenum)) {
+        next.delete(table.tablenum);
+        return next;
+      }
+      if (!mergeMode) return new Set([table.tablenum]);
+      next.add(table.tablenum);
       return next;
     });
   };
 
+  const changeMergeMode = (on: boolean) => {
+    setMergeMode(on);
+    if (!on) setSelectedTablenums((prev) => (prev.size > 1 ? new Set([Array.from(prev)[0]]) : prev));
+  };
+
   const applySuggestion = (tablenums: number[]) => {
+    // A multi-table suggestion *is* a merge — switch the mode on with it, or the
+    // next tap on a table would collapse it back to one.
+    if (tablenums.length > 1) setMergeMode(true);
     setSelectedTablenums(new Set(tablenums));
     setScrollTarget(tablenums[0]);
   };
@@ -170,6 +220,28 @@ export function WaitlistSeatModal({ entry, onClose, onSeated }: WaitlistSeatModa
     if (!linkInfo || zoneID == null || !canSeat) return;
     setSubmitting(true);
     try {
+      // The store's standing "no reservations on this table" flag, checked here as
+      // well as in the grid: unlike a POS check it holds for every window, so no
+      // amount of seating far ahead makes such a table pickable.
+      const notReservable = Array.from(selectedTablenums).filter((n) => !isTableReservable(tableByNum.get(n)));
+      if (notReservable.length > 0) {
+        toast.error(t('seating.unavailableBlocked', { tables: notReservable.map((n) => `#${n}`).join(', ') }));
+        setSelectedTablenums((prev) => new Set(Array.from(prev).filter((n) => isTableReservable(tableByNum.get(n)))));
+        return;
+      }
+      // A check can be opened on the chosen table while this modal is open, so
+      // re-read the POS before writing instead of trusting the loaded colours.
+      // Skipped when seating far enough ahead that an open check doesn't matter.
+      if (!ignoreCurrentUse) {
+        const fresh = await reloadPosOpenTables();
+        const posNow = fresh ?? posOpenTablenums;
+        const conflicts = Array.from(selectedTablenums).filter((n) => posNow.has(n));
+        if (conflicts.length > 0) {
+          toast.error(t('seating.posOpenBlocked', { tables: conflicts.map((n) => `#${n}`).join(', ') }));
+          setSelectedTablenums((prev) => new Set(Array.from(prev).filter((n) => !posNow.has(n))));
+          return;
+        }
+      }
       const tablenums = Array.from(selectedTablenums);
       await updateWaitlist({
         globalId: entry.globalId,
@@ -193,8 +265,10 @@ export function WaitlistSeatModal({ entry, onClose, onSeated }: WaitlistSeatModa
         })),
       });
       onSeated(tablenums);
-    } catch {
-      toast.error(t('common.error'));
+    } catch (err) {
+      // ReservationWaitlists refuses with a reason (missing required field, slot gone,
+      // entry already settled) — passing it straight through beats a generic line.
+      toast.error(apiErrorMessage(err, t('seating.seatError')));
     } finally {
       setSubmitting(false);
     }
@@ -204,17 +278,17 @@ export function WaitlistSeatModal({ entry, onClose, onSeated }: WaitlistSeatModa
   return (
     <>
       <div
-        className="modal-backdrop fixed inset-0 z-[9996] flex items-stretch justify-center bg-black/70 p-2 sm:items-center sm:p-4"
+        className="modal-backdrop fixed inset-0 z-[9996] flex items-stretch justify-center p-2 sm:items-center sm:p-4"
         onClick={onClose}
       >
         <div
-          className="glass-card modal-panel flex max-h-full w-full max-w-4xl flex-col p-4 sm:p-6"
+          className="glass-card modal-panel flex max-h-full w-full max-w-4xl flex-col p-3 sm:p-4"
           onClick={(e) => e.stopPropagation()}
         >
-          <div className="mb-3 flex shrink-0 flex-wrap items-center justify-between gap-3">
+          <div className="mb-2 flex shrink-0 flex-wrap items-center justify-between gap-2">
             <div>
-              <h3 className="text-lg font-bold text-white">{t('waitlist.seatTitle')}</h3>
-              <p className="text-sm text-slate-400">
+              <h3 className="text-base font-bold text-ink">{t('waitlist.seatTitle')}</h3>
+              <p className="text-xs text-muted">
                 {entry.guestName} · {partySize} {t('waitlist.guests')} · {entry.phoneNumber}
               </p>
             </div>
@@ -222,7 +296,7 @@ export function WaitlistSeatModal({ entry, onClose, onSeated }: WaitlistSeatModa
                 ReservationTime and its period — the picker flags a time no
                 period covers instead of letting it through silently. */}
             <div className="flex items-center gap-2">
-              <span className="text-xs text-slate-400">{t('waitlist.seatFrom')}</span>
+              <span className="text-xs text-muted">{t('waitlist.seatFrom')}</span>
               <PeriodTimePicker
                 date={date}
                 value={startTime}
@@ -232,11 +306,14 @@ export function WaitlistSeatModal({ entry, onClose, onSeated }: WaitlistSeatModa
                   setSelectedTablenums(new Set());
                 }}
               />
-              <span className="text-xs text-slate-500">→ {formatHHmm(reserEndTime)}</span>
+              <span className="flex items-center gap-1 text-xs text-faint">
+                <ArrowLeftIcon size={12} className="rotate-180" />
+                {formatHHmm(reserEndTime)}
+              </span>
             </div>
           </div>
 
-          <div className="mb-3 flex shrink-0 flex-wrap gap-2">
+          <div className="mb-2 flex shrink-0 flex-wrap gap-1.5">
             {zones.map((z) => (
               <button
                 key={z.zoneID}
@@ -245,9 +322,7 @@ export function WaitlistSeatModal({ entry, onClose, onSeated }: WaitlistSeatModa
                   setSelectedTablenums(new Set());
                 }}
                 className={`chip-btn rounded-full px-4 text-sm font-medium ${
-                  zoneID === z.zoneID
-                    ? 'bg-gradient-to-br from-[#ef4444] to-[#dc2626] text-white shadow-[0_4px_16px_rgba(239,68,68,0.35)]'
-                    : 'bg-slate-800/50 text-slate-300 hover:bg-slate-700/50'
+                  zoneID === z.zoneID ? 'pill-on' : 'pill'
                 }`}
               >
                 {z.zoneName}
@@ -255,13 +330,21 @@ export function WaitlistSeatModal({ entry, onClose, onSeated }: WaitlistSeatModa
             ))}
           </div>
 
+          {posOpenFailed && zoneID != null && (
+            <p className="note note-warn mb-2 shrink-0">
+              <AlertIcon size={14} className="mr-1 inline shrink-0" />
+              {t('seating.posUnavailable')}
+            </p>
+          )}
+
           {/* Picking a suggestion is the normal way to seat someone, so it sits
               above the floor plan and outside the scroll area — always one tap
               away instead of behind a toggle and a scroll. */}
           {!loading && zoneID != null && suggestionOptions.length > 0 && (
-            <div className="mb-3 shrink-0 rounded-xl border border-emerald-500/25 bg-emerald-950/15 p-3">
-              <p className="mb-2 text-xs font-semibold uppercase tracking-wide text-emerald-300">
-                ★ {t('seating.suggestions')}
+            <div className="note note-ok mb-2 shrink-0 p-2">
+              <p className="mb-1.5 text-[11px] font-semibold uppercase tracking-wide">
+                <StarIcon size={13} className="mr-1 inline" />
+                {t('seating.suggestions')}
               </p>
               <div className="flex gap-2 overflow-x-auto pb-1">
                 {suggestionOptions.map((option) => {
@@ -273,9 +356,7 @@ export function WaitlistSeatModal({ entry, onClose, onSeated }: WaitlistSeatModa
                       key={option.key}
                       onClick={() => applySuggestion(option.tablenums)}
                       className={`chip-btn shrink-0 rounded-full px-3 text-xs font-semibold ${
-                        isSelected
-                          ? 'bg-gradient-to-br from-[#ef4444] to-[#dc2626] text-white'
-                          : 'bg-emerald-500/15 text-emerald-300 hover:bg-emerald-500/25'
+                        isSelected ? 'pill-on' : 'bg-[var(--ok-bg)] text-ok hover:brightness-105'
                       }`}
                     >
                       {option.tablenums.map((n) => `#${n}`).join(' + ')}
@@ -289,11 +370,19 @@ export function WaitlistSeatModal({ entry, onClose, onSeated }: WaitlistSeatModa
             </div>
           )}
 
+          {/* Above the floor plan: below it the legend sits past every table in
+              the zone, so nobody reading the colours ever reaches it. */}
+          {zoneID != null && !loading && (
+            <div className="mb-2 shrink-0 border-b border-line-soft pb-2">
+              <TableLegend />
+            </div>
+          )}
+
           <div className="min-h-0 flex-1 overflow-y-auto pr-1">
             {loading ? (
               <Spinner label={t('common.loading')} />
             ) : zoneID == null ? (
-              <p className="py-8 text-center text-sm text-slate-400">{t('seating.selectZone')}</p>
+              <p className="py-8 text-center text-sm text-muted">{t('seating.selectZone')}</p>
             ) : (
               <TableGrid
                 tables={tables}
@@ -303,23 +392,15 @@ export function WaitlistSeatModal({ entry, onClose, onSeated }: WaitlistSeatModa
                 partySize={partySize}
                 onToggle={toggleTable}
                 onViewBooking={(globalIds) => setDetailBooking(bookingsByGlobalId.get(globalIds[0]) ?? null)}
+                mergeMode={mergeMode}
+                onMergeModeChange={changeMergeMode}
               />
             )}
           </div>
 
-          {zoneID != null && !loading && (
-            <div className="mt-3 shrink-0">
-              <TableLegend />
-            </div>
-          )}
-
           {selectedTablenums.size > 0 && (
             <div
-              className={`mt-3 shrink-0 rounded-xl border px-3 py-2 text-xs ${
-                canSeat
-                  ? 'border-emerald-500/30 bg-emerald-950/20 text-emerald-300'
-                  : 'border-amber-500/30 bg-amber-950/20 text-amber-300'
-              }`}
+              className={`note mt-2 shrink-0 ${canSeat ? 'note-ok' : 'note-warn'}`}
             >
               {Array.from(selectedTablenums)
                 .map((n) => `#${n}`)
@@ -329,7 +410,19 @@ export function WaitlistSeatModal({ entry, onClose, onSeated }: WaitlistSeatModa
             </div>
           )}
 
-          <div className="mt-4 flex shrink-0 gap-3">
+          {isExcessCapacity(selectedCapacity, partySize) && (
+            <p className="note note-warn mt-2 shrink-0">
+              <AlertIcon size={14} className="mr-1 inline shrink-0" />
+              {t('seating.excessCapacityWarning', {
+                tables: selectedTablenums.size,
+                selected: selectedCapacity,
+                party: partySize,
+                excess: selectedCapacity - partySize,
+              })}
+            </p>
+          )}
+
+          <div className="mt-3 flex shrink-0 gap-2">
             <button onClick={onClose} className="touch-btn btn-secondary flex-1 rounded-xl font-medium">
               {t('common.cancel')}
             </button>

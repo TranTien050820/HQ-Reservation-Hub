@@ -91,7 +91,6 @@
     "restaurants": {
       "heading": "予約受付中の店舗",
       "subtitle": "{{date}}、{{count}}{{guestLabel}}での空席を表示しています",
-      "empty": "このサイトに登録されている店舗はまだありません。",
       "loading": "店舗情報を読み込み中…"
     },
     "cta": {
@@ -215,5 +214,50 @@
       "8": "終了",
       "unknown": "不明"
     }
+  },
+  "preorder": {
+    "title": "事前注文",
+    "subtitle": "今お料理を選んでおくと、ご着席後すぐに調理を始めます。",
+    "back": "戻る",
+    "ctaTitle": "事前注文",
+    "ctaSubtitle": "事前にお料理を選んでおけば、ご着席後すぐにお出しできます。",
+    "ctaButton": "料理を事前注文する",
+    "ctaShort": "事前注文",
+    "loading": "読み込み中…",
+    "loadError": "メニューを読み込めませんでした",
+    "cartError": "選択内容を更新できませんでした",
+    "checkoutError": "事前注文を送信できませんでした",
+    "menuNotConfigured": "この店舗はまだオンラインメニューを公開していません。ご来店後にテーブルでご注文ください。",
+    "missingReservation": "事前注文には予約番号が必要です。",
+    "emptyCategory": "このカテゴリーに料理はありません。",
+    "add": "追加",
+    "choose": "選ぶ",
+    "adding": "追加中…",
+    "addToCart": "注文に追加",
+    "chooseOne": "1つ選択",
+    "chooseUpTo": "最大 {{count}} つ選択",
+    "itemNote": "キッチンへの要望",
+    "itemNotePlaceholder": "例：パクチー抜き",
+    "decrease": "数量を減らす",
+    "increase": "数量を増やす",
+    "remove": "削除",
+    "cartTitle": "事前注文の内容",
+    "cartEmpty": "まだ料理が選ばれていません。",
+    "subtotal": "小計",
+    "total": "合計",
+    "taxNote": "税とサービス料は確定時に計算されます。",
+    "confirm": "事前注文を確定",
+    "confirmHint": "今はお支払いは発生しません。店舗でのお支払いとなります。",
+    "confirmWithCount": "{{count}} 品を確定",
+    "submitting": "送信中…",
+    "placedTitle": "事前注文 {{number}} を承りました",
+    "placedTitleShort": "受付済みの事前注文",
+    "paymentPending": "この店舗はご来店前のお支払いをお願いしています。詳細はご連絡いたします。",
+    "conflictTitle": "一部の料理に変更があります",
+    "conflictSubtitle": "以下の変更をご確認のうえ、もう一度確定してください。",
+    "issueSoldOut": "{{name}} は品切れです",
+    "acceptChanges": "注文を更新する",
+    "rebuilding": "更新中…",
+    "backToBookings": "予約一覧"
   }
 }

@@ -6,12 +6,14 @@ import {
   findPeriodForTime,
   firstOpenSlot,
   isPeriodOver,
+  periodContainsTime,
   periodLabel,
   periodSlots,
   periodsForDate,
 } from '../utils/periods';
 import { toMinutes } from '../utils/timeWindow';
 import { todayStr } from '../utils/date';
+import { AlertIcon, CheckCircleIcon, LockIcon } from './icons';
 
 /** Slots go stale as the shift runs on, so the lock line moves on its own. */
 const TICK_MS = 60_000;
@@ -61,7 +63,27 @@ export function PeriodTimePicker({ date, value, onChange, compact = false }: Per
   const lockBefore = locksPast ? nowMin : null;
 
   const openPeriods = useMemo(() => (linkInfo ? periodsForDate(linkInfo, day) : []), [linkInfo, day]);
-  const activePeriod = useMemo(() => findPeriodForTime(openPeriods, value), [openPeriods, value]);
+
+  /**
+   * The period the hostess tapped. Needed because periods share their
+   * boundaries — a store whose lunch ends at 14:00 and dinner starts at 14:00
+   * has two periods covering 14:00, and resolving the selection from the time
+   * alone always returned the first of them. Tapping "Ca tối" then listed "Ca
+   * trưa"'s slots and labelled the field with the wrong period.
+   */
+  const [pinnedPeriodID, setPinnedPeriodID] = useState<number | null>(null);
+
+  // Another day offers other periods, so a pin from the previous one means nothing.
+  useEffect(() => setPinnedPeriodID(null), [day]);
+
+  const activePeriod = useMemo(() => {
+    // The pin only holds while the chosen time still falls inside it: typing a
+    // time elsewhere in the day moves the selection, exactly as before.
+    const pinned = openPeriods.find((p) => p.periodID === pinnedPeriodID);
+    if (pinned && periodContainsTime(pinned, value)) return pinned;
+    return findPeriodForTime(openPeriods, value);
+  }, [openPeriods, pinnedPeriodID, value]);
+
   const slots = useMemo(() => (activePeriod ? periodSlots(activePeriod) : []), [activePeriod]);
 
   const hasPeriodsConfigured = (linkInfo?.periods.length ?? 0) > 0;
@@ -83,18 +105,17 @@ export function PeriodTimePicker({ date, value, onChange, compact = false }: Per
                 title={over ? t('waitlist.periodOver') : undefined}
                 // Jump to the first slot still ahead of us, not blindly to the
                 // period's start, which may already be locked.
-                onClick={() => onChange(firstOpenSlot(p, lockBefore) || value)}
-                className={`chip-btn rounded-full px-3 text-xs font-medium ${
-                  isActive
-                    ? 'bg-gradient-to-br from-[#ef4444] to-[#dc2626] text-white shadow-[0_4px_16px_rgba(239,68,68,0.35)]'
-                    : over
-                      ? 'cursor-not-allowed bg-slate-800/30 text-slate-600'
-                      : 'bg-slate-800/50 text-slate-300 hover:bg-slate-700/50'
+                onClick={() => {
+                  setPinnedPeriodID(p.periodID);
+                  onChange(firstOpenSlot(p, lockBefore) || value);
+                }}
+                className={`chip-btn inline-flex items-center gap-1 rounded-full px-3 text-xs font-medium ${
+                  isActive ? 'pill-on' : over ? 'pill-off' : 'pill'
                 }`}
               >
-                {over && '🔒 '}
+                {over && <LockIcon size={12} />}
                 {p.periodName}
-                <span className={`ml-1.5 ${isActive ? 'text-white/75' : over ? 'text-slate-600' : 'text-slate-500'}`}>
+                <span className={`ml-1.5 ${isActive ? 'text-white/75' : 'opacity-70'}`}>
                   {periodLabel(p)}
                 </span>
               </button>
@@ -104,7 +125,7 @@ export function PeriodTimePicker({ date, value, onChange, compact = false }: Per
       )}
 
       {!compact && slots.length > 0 && (
-        <div className="flex gap-1.5 overflow-x-auto pb-1">
+        <div className="scroll-x-soft flex gap-1.5 pb-1.5">
           {slots.map((slot) => {
             const locked = isLocked(slot);
             return (
@@ -116,10 +137,10 @@ export function PeriodTimePicker({ date, value, onChange, compact = false }: Per
                 onClick={() => onChange(slot)}
                 className={`chip-btn shrink-0 rounded-lg px-3 text-xs font-semibold ${
                   slot === value
-                    ? 'bg-white text-slate-900'
+                    ? 'pill-on'
                     : locked
-                      ? 'cursor-not-allowed bg-black/15 text-slate-600 line-through'
-                      : 'bg-black/25 text-slate-300 hover:bg-slate-700/50'
+                      ? 'pill-off line-through'
+                      : 'pill'
                 }`}
               >
                 {slot}
@@ -137,17 +158,25 @@ export function PeriodTimePicker({ date, value, onChange, compact = false }: Per
           // staff, since browsers don't block out-of-range typing.
           min={lockBefore != null ? pad(lockBefore) : undefined}
           onChange={(e) => onChange(e.target.value)}
-          className="field chip-btn w-32 px-3 text-sm text-white"
+          className="field chip-btn w-32 px-3 text-sm"
         />
-        {valueIsPast && <span className="text-xs text-amber-300">⚠ {t('waitlist.timeInPast')}</span>}
+        {valueIsPast && (
+          <span className="flex items-center gap-1 text-xs text-warn">
+            <AlertIcon size={13} /> {t('waitlist.timeInPast')}
+          </span>
+        )}
         {activePeriod ? (
-          <span className="text-xs text-emerald-300">
-            ✓ {activePeriod.periodName} · {periodLabel(activePeriod)}
+          <span className="flex items-center gap-1 text-xs text-ok">
+            <CheckCircleIcon size={13} /> {activePeriod.periodName} · {periodLabel(activePeriod)}
           </span>
         ) : hasPeriodsConfigured && openPeriods.length === 0 ? (
-          <span className="text-xs text-amber-300">⚠ {t('waitlist.noPeriodToday')}</span>
+          <span className="flex items-center gap-1 text-xs text-warn">
+            <AlertIcon size={13} /> {t('waitlist.noPeriodToday')}
+          </span>
         ) : hasPeriodsConfigured ? (
-          <span className="text-xs text-amber-300">⚠ {t('waitlist.timeOutsidePeriod')}</span>
+          <span className="flex items-center gap-1 text-xs text-warn">
+            <AlertIcon size={13} /> {t('waitlist.timeOutsidePeriod')}
+          </span>
         ) : null}
       </div>
     </div>

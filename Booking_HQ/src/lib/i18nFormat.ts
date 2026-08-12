@@ -46,6 +46,19 @@ export function formatDateShort(date: string, language: string): string {
   });
 }
 
+/**
+ * e.g. "195.000 ₫". OrderHub returns whole-dong amounts (§1.2), so no decimals are shown
+ * even for currencies that normally carry them.
+ */
+export function formatMoney(value: number | undefined | null, language: string, currency = 'VND'): string {
+  const amount = Number(value ?? 0);
+  return new Intl.NumberFormat(resolveLocale(language), {
+    style: 'currency',
+    currency,
+    maximumFractionDigits: 0,
+  }).format(Number.isFinite(amount) ? amount : 0);
+}
+
 /** e.g. "7:00 PM" / "19:00" */
 export function formatTime(value: string | undefined, language: string): string {
   if (!value) return '—';

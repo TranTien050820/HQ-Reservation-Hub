@@ -1,13 +1,20 @@
 import { WaitlistStatus, type ReservationWaitlist } from '../types';
+import { formatVnHHmm, parseServerTime } from './date';
 
 /** Entries the hostess can still act on — everything else is history. */
 export const OPEN_WAITLIST_STATUSES: number[] = [WaitlistStatus.Waiting, WaitlistStatus.Confirmed];
 
+/** `priority` is a number on the wire but only ever means "jumps the queue" here. */
+export function isVip(entry: Pick<ReservationWaitlist, 'priority'>): boolean {
+  return (entry.priority ?? 0) > 0;
+}
+
 /** Minutes elapsed since a backend timestamp, floored at 0 (clock skew shouldn't show "-3 phút"). */
 export function elapsedMinutes(iso: string | null | undefined, now: number = Date.now()): number {
-  if (!iso) return 0;
-  const ms = new Date(iso).getTime();
-  if (Number.isNaN(ms)) return 0;
+  // Read as Vietnam time — see `parseServerTime`, without which a tablet on
+  // another zone reports every wait as hours long.
+  const ms = parseServerTime(iso);
+  if (ms == null) return 0;
   return Math.max(0, Math.floor((now - ms) / 60000));
 }
 
@@ -34,7 +41,7 @@ export const STALE_WAIT_MINUTES = 45;
 export function compareQueue(a: ReservationWaitlist, b: ReservationWaitlist): number {
   const vip = (b.priority ?? 0) - (a.priority ?? 0);
   if (vip !== 0) return vip;
-  return new Date(a.dateCreated).getTime() - new Date(b.dateCreated).getTime();
+  return (parseServerTime(a.dateCreated) ?? 0) - (parseServerTime(b.dateCreated) ?? 0);
 }
 
 /** "19:00:00" -> "19:00"; anything missing renders as an em dash. */
@@ -43,10 +50,9 @@ export function formatHHmm(time: string | null | undefined): string {
   return time.slice(0, 5);
 }
 
-/** "HH:mm" for an <input type="time">, defaulting to the current clock. */
+/** "HH:mm" for an <input type="time">, defaulting to the current clock in Vietnam. */
 export function nowHHmm(): string {
-  const d = new Date();
-  return `${String(d.getHours()).padStart(2, '0')}:${String(d.getMinutes()).padStart(2, '0')}`;
+  return formatVnHHmm();
 }
 
 /** The backend expects a TimeSpan ("HH:mm:ss"); an <input type="time"> gives "HH:mm". */

@@ -63,6 +63,22 @@ export default function ConfirmationPage() {
         </div>
       </div>
 
+      {/* Pre-ordering needs the reservation code — it is what ties the order to this booking
+          and what the hostess releases to the kitchen at check-in (§8.4). */}
+      {booking?.reservationNo && (
+        <div className="mt-6 rounded-xl border border-resy-red/30 bg-red-50 p-5 text-left">
+          <h3 className="font-bold">{t('preorder.ctaTitle')}</h3>
+          <p className="mt-1 text-sm text-neutral-600">{t('preorder.ctaSubtitle')}</p>
+          <Link
+            to={`/${publicKey}/preorder/${encodeURIComponent(booking.reservationNo)}`}
+            state={{ booking }}
+            className="mt-3 inline-block rounded-lg bg-resy-red px-5 py-2.5 text-sm font-semibold text-white transition-colors hover:bg-red-600"
+          >
+            {t('preorder.ctaButton')}
+          </Link>
+        </div>
+      )}
+
       <div className="mt-6 rounded-xl border border-neutral-200 bg-neutral-50 p-5 text-left">
         <h3 className="text-sm font-semibold uppercase text-neutral-500">{t('restaurant.goodToKnow')}</h3>
         <ul className="mt-3 flex flex-col gap-2.5 text-sm text-neutral-600">

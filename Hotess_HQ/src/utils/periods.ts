@@ -1,4 +1,5 @@
 import type { LinkInfo, ReservationPeriod } from '../types';
+import { vnMinutesOfDay } from './date';
 import { toMinutes } from './timeWindow';
 
 const DAY_MINUTES = 1440;
@@ -50,21 +51,28 @@ export function periodLabel(period: ReservationPeriod): string {
 }
 
 /**
- * The period a time falls into, matching the backend's bounds exactly:
- * inclusive at both ends, and a cross-day period covers `time >= start` OR
- * `time <= end`. Periods with no start/end match anything, as in the SQL.
+ * Does this period cover `hhmm`? Matches the backend's bounds exactly: inclusive
+ * at both ends, and a cross-day period covers `time >= start` OR `time <= end`.
+ * A period with no start/end covers anything, as in the SQL.
+ *
+ * Inclusive ends mean adjacent periods overlap on the boundary — a store whose
+ * lunch ends at 14:00 and dinner starts at 14:00 has two periods covering 14:00.
+ * Callers that need to know *which one the user meant* can't get that from the
+ * time alone; see `PeriodTimePicker`.
  */
-export function findPeriodForTime(periods: ReservationPeriod[], hhmm: string): ReservationPeriod | null {
+export function periodContainsTime(period: ReservationPeriod, hhmm: string): boolean {
   const time = toMinutes(hhmm);
-  if (time == null) return null;
-  for (const period of periods) {
-    const start = toMinutes(period.startTime);
-    const end = toMinutes(period.endTime);
-    if (start == null || end == null) return period;
-    const crossesMidnight = (period.crossDay ?? 0) === 1 && end < start;
-    if (crossesMidnight ? time >= start || time <= end : time >= start && time <= end) return period;
-  }
-  return null;
+  if (time == null) return false;
+  const start = toMinutes(period.startTime);
+  const end = toMinutes(period.endTime);
+  if (start == null || end == null) return true;
+  const crossesMidnight = (period.crossDay ?? 0) === 1 && end < start;
+  return crossesMidnight ? time >= start || time <= end : time >= start && time <= end;
+}
+
+/** The first period a time falls into — the backend resolves PeriodID the same way. */
+export function findPeriodForTime(periods: ReservationPeriod[], hhmm: string): ReservationPeriod | null {
+  return periods.find((period) => periodContainsTime(period, hhmm)) ?? null;
 }
 
 const SLOT_STEP_MINUTES = 30;
@@ -88,10 +96,9 @@ export function periodSlots(period: ReservationPeriod): string[] {
   return slots;
 }
 
-/** Minutes since midnight, right now. */
+/** Minutes since midnight, right now — in the store's timezone, not the tablet's. */
 export function currentMinutes(): number {
-  const d = new Date();
-  return d.getHours() * 60 + d.getMinutes();
+  return vnMinutesOfDay();
 }
 
 /** True once a period's whole window is behind `nowMin`. Cross-day windows never are. */

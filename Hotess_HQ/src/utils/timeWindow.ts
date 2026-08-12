@@ -1,3 +1,5 @@
+import { vnEpochMs, vnMinutesOfDay } from './date';
+
 /**
  * ReserSeatTables rows are time-slot holds (reserStartTime/reserEndTime on a
  * given reserDate), not "occupied for the rest of the day" markers. A table
@@ -26,9 +28,8 @@ export function isSeatWindowActiveNow(reserStartTime?: string | null, reserEndTi
   const start = toMinutes(reserStartTime);
   const end = toMinutes(reserEndTime);
   if (start == null || end == null) return true; // no time info -> treat as always blocking
-  const now = new Date();
-  const nowMinutes = now.getHours() * 60 + now.getMinutes();
-  return isWithinWindow(nowMinutes, start, end);
+  // The hold's times are the store's wall-clock, so "now" has to be too.
+  return isWithinWindow(vnMinutesOfDay(), start, end);
 }
 
 /** Normalises a window to [start, end) on a linear axis, unwrapping midnight crossings. */
@@ -64,6 +65,49 @@ export function seatWindowOverlaps(
   );
 }
 
+/**
+ * How far ahead a seat window has to start before a table that is busy *right
+ * now* stops counting as busy: a party sitting down (or with an open POS check)
+ * at 14:00 has left long before a 21:00 booking arrives, so refusing that table
+ * for tonight would strand a bookable table all afternoon.
+ */
+export const CURRENT_USE_LOOKAHEAD_MINUTES = 180;
+
+/**
+ * Minutes from now until `date` ("yyyy-MM-dd", or any ISO string starting with
+ * one) at `time` ("HH:mm" / "HH:mm:ss"). Null when either part is missing or
+ * unparsable. Negative for a moment already past.
+ */
+export function minutesUntil(date: string | null | undefined, time: string | null | undefined): number | null {
+  const minutes = toMinutes(time);
+  if (minutes == null) return null;
+  // A booking's date+time is Vietnam wall-clock; anchoring it to the device's
+  // zone instead would put a 19:00 booking hours off on a mis-set tablet.
+  const target = vnEpochMs(date, minutes);
+  if (target == null) return null;
+  return Math.round((target - Date.now()) / 60000);
+}
+
+/**
+ * True when `date`+`time` (store clock) is already behind us. Input that can't be
+ * read answers false — a field still being filled in is not "in the past".
+ */
+export function isPastDateTime(date: string | null | undefined, time: string | null | undefined): boolean {
+  const minutes = minutesUntil(date, time);
+  return minutes != null && minutes < 0;
+}
+
+/**
+ * True when the window starting at `date`+`time` is at least
+ * CURRENT_USE_LOOKAHEAD_MINUTES away, i.e. tables in use at this moment will
+ * have turned over by then. A missing/unparsable time answers false — "busy now
+ * blocks" is the safe default.
+ */
+export function isBeyondCurrentUse(date: string | null | undefined, time: string | null | undefined): boolean {
+  const minutes = minutesUntil(date, time);
+  return minutes != null && minutes >= CURRENT_USE_LOOKAHEAD_MINUTES;
+}
+
 /** Fallback seat-hold length when the zone has no configured duration. */
 const DEFAULT_SEAT_DURATION_MINUTES = 120;
 
@@ -84,8 +128,7 @@ export function computeSeatWindow(
   startHHMM: string | null | undefined,
   durationMinutes: number | null | undefined,
 ): { reserStartTime: string; reserEndTime: string } {
-  const now = new Date();
-  const startMinutes = toMinutes(startHHMM) ?? now.getHours() * 60 + now.getMinutes();
+  const startMinutes = toMinutes(startHHMM) ?? vnMinutesOfDay();
   const duration = durationMinutes && durationMinutes > 0 ? durationMinutes : DEFAULT_SEAT_DURATION_MINUTES;
   return {
     reserStartTime: minutesToHHMMSS(startMinutes),

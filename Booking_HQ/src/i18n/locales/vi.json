@@ -91,7 +91,6 @@
     "restaurants": {
       "heading": "Nhà hàng đang nhận đặt bàn",
       "subtitle": "Hiển thị bàn cho {{count}} {{guestLabel}} vào ngày {{date}}",
-      "empty": "Hiện chưa có nhà hàng nào được cấu hình cho trang này.",
       "loading": "Đang tải danh sách nhà hàng…"
     },
     "cta": {
@@ -225,5 +224,50 @@
       "100": "Nhà hàng không xác nhận",
       "unknown": "Không xác định"
     }
+  },
+  "preorder": {
+    "title": "Đặt món trước",
+    "subtitle": "Chọn món ngay bây giờ — bếp sẽ làm khi bạn được xếp bàn.",
+    "back": "Quay lại",
+    "ctaTitle": "Đặt món trước",
+    "ctaSubtitle": "Chọn sẵn món để có đồ ăn ngay sau khi bạn ngồi vào bàn.",
+    "ctaButton": "Đặt món trước",
+    "ctaShort": "Đặt món",
+    "loading": "Đang tải…",
+    "loadError": "Không tải được thực đơn",
+    "cartError": "Không cập nhật được món đã chọn",
+    "checkoutError": "Không gửi được đơn đặt món",
+    "menuNotConfigured": "Nhà hàng chưa mở thực đơn đặt trước. Bạn có thể gọi món tại bàn khi đến.",
+    "missingReservation": "Cần mã đặt bàn để đặt món trước.",
+    "emptyCategory": "Chưa có món trong mục này.",
+    "add": "Thêm",
+    "choose": "Chọn",
+    "adding": "Đang thêm…",
+    "addToCart": "Thêm vào đơn",
+    "chooseOne": "Chọn 1",
+    "chooseUpTo": "Chọn tối đa {{count}}",
+    "itemNote": "Ghi chú cho bếp",
+    "itemNotePlaceholder": "ví dụ: không hành",
+    "decrease": "Giảm số lượng",
+    "increase": "Tăng số lượng",
+    "remove": "Bỏ",
+    "cartTitle": "Món đã chọn",
+    "cartEmpty": "Bạn chưa chọn món nào.",
+    "subtotal": "Tạm tính",
+    "total": "Tổng cộng",
+    "taxNote": "Thuế và phí dịch vụ được tính khi bạn xác nhận.",
+    "confirm": "Xác nhận đặt món",
+    "confirmHint": "Chưa thu tiền lúc này — bạn thanh toán tại nhà hàng.",
+    "confirmWithCount": "Xác nhận {{count}} món",
+    "submitting": "Đang gửi…",
+    "placedTitle": "Đã nhận đơn đặt món {{number}}",
+    "placedTitleShort": "Đơn đã đặt",
+    "paymentPending": "Nhà hàng yêu cầu thanh toán trước khi đến — nhà hàng sẽ liên hệ hướng dẫn thanh toán.",
+    "conflictTitle": "Một vài món vừa thay đổi",
+    "conflictSubtitle": "Vui lòng xem lại thay đổi bên dưới rồi xác nhận lại.",
+    "issueSoldOut": "{{name}} đã hết",
+    "acceptChanges": "Cập nhật đơn của tôi",
+    "rebuilding": "Đang cập nhật…",
+    "backToBookings": "Đặt bàn của tôi"
   }
 }

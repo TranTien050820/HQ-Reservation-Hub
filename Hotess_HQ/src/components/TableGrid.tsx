@@ -1,9 +1,10 @@
 import { useEffect, useMemo, useState, type ReactNode } from 'react';
 import { useTranslation } from 'react-i18next';
 import type { Section, TableSetup } from '../types';
-import type { TableOccupancy } from '../utils/tableOccupancy';
+import { isTableBlocked, isTableReservable, type TableOccupancy } from '../utils/tableOccupancy';
+import { ChevronDownIcon, MergeIcon, UsersIcon } from './icons';
 
-export type TableState = 'available' | 'reserved' | 'occupied' | 'overdue' | 'unavailable';
+export type TableState = 'available' | 'upcoming' | 'reserved' | 'occupied' | 'overdue' | 'posOpen' | 'unavailable';
 
 /** Built by `buildTableOccupancy` — re-exported under the grid's own name for callers. */
 export type TableExtraInfo = TableOccupancy;
@@ -20,6 +21,9 @@ interface TableGridProps {
   partySize: number;
   onToggle: (table: TableSetup) => void;
   onViewBooking: (globalIds: number[]) => void;
+  /** Merging on: several tables can be combined for one party, so multi-select and under-sized tables are allowed. Owned by the parent because it also governs how selection behaves. */
+  mergeMode: boolean;
+  onMergeModeChange: (mergeMode: boolean) => void;
   /** View-only mode (no active booking to seat) — tables aren't selectable, only viewable. */
   readOnly?: boolean;
   /** Extra control (e.g. a "Suggested tables" trigger) rendered on the same row as the Filters button, to save vertical space. */
@@ -29,37 +33,25 @@ interface TableGridProps {
 const CAPACITY_ALL = 'all';
 type StatusFilter = TableState | 'merged' | 'all';
 
-const STATE_STYLES: Record<TableState, { card: string; label: string; dot: string; chip: string }> = {
-  available: {
-    card: 'border-emerald-400/30 bg-emerald-950/10 text-white hover:border-emerald-400/60 hover:bg-emerald-950/20',
-    label: 'seating.legendAvailable',
-    dot: 'bg-emerald-400',
-    chip: 'text-emerald-300',
-  },
-  reserved: {
-    card: 'cursor-not-allowed border-sky-400/40 bg-sky-950/20 text-sky-300/80',
-    label: 'seating.legendReserved',
-    dot: 'bg-sky-400',
-    chip: 'text-sky-300',
-  },
-  occupied: {
-    card: 'cursor-not-allowed border-red-500/30 bg-red-950/20 text-red-300/70',
-    label: 'seating.legendOccupied',
-    dot: 'bg-red-400',
-    chip: 'text-red-300',
-  },
-  overdue: {
-    card: 'cursor-not-allowed border-amber-400/40 bg-amber-950/20 text-amber-300/80',
-    label: 'seating.legendOverdue',
-    dot: 'bg-amber-400',
-    chip: 'text-amber-300',
-  },
-  unavailable: {
-    card: 'cursor-not-allowed border-white/5 bg-slate-800/30 text-slate-500',
-    label: 'seating.legendUnavailable',
-    dot: 'bg-slate-500',
-    chip: 'text-slate-400',
-  },
+/**
+ * The wash/ink for each state lives in index.css (`.tbl-*`) rather than in
+ * Tailwind classes here: the tints that read as "a tinted table" on the dark
+ * indigo turn into grey smudges on the light background, so each state needs a
+ * different pair per theme — something a single class string can't express.
+ * `.tbl-ink` inside the card picks up the matching text/dot colour.
+ */
+const STATE_STYLES: Record<TableState, { card: string; label: string }> = {
+  available: { card: 'tbl-available', label: 'seating.legendAvailable' },
+  // Free for the window being seated, but booked elsewhere in the day — still
+  // pickable, just never shown as plain "Trống".
+  upcoming: { card: 'tbl-upcoming', label: 'seating.legendUpcoming' },
+  reserved: { card: 'tbl-reserved', label: 'seating.legendReserved' },
+  occupied: { card: 'tbl-occupied', label: 'seating.legendOccupied' },
+  overdue: { card: 'tbl-overdue', label: 'seating.legendOverdue' },
+  // An open check on the POS — the table has guests on it that the reservation
+  // data doesn't know about, so it can never be seated into.
+  posOpen: { card: 'tbl-posOpen', label: 'seating.legendPosOpen' },
+  unavailable: { card: 'tbl-unavailable', label: 'seating.legendUnavailable' },
 };
 
 export function TableGrid({
@@ -71,6 +63,8 @@ export function TableGrid({
   partySize,
   onToggle,
   onViewBooking,
+  mergeMode,
+  onMergeModeChange,
   readOnly = false,
   filterBarExtra,
 }: TableGridProps) {
@@ -78,8 +72,6 @@ export function TableGrid({
   const [capacityFilter, setCapacityFilter] = useState<string>(CAPACITY_ALL);
   const [statusFilter, setStatusFilter] = useState<StatusFilter>('all');
   const [filtersOpen, setFiltersOpen] = useState(false);
-  /** Lets tables smaller than the party be picked, so several can be combined. */
-  const [mergeMode, setMergeMode] = useState(false);
 
   const capacityOptions = useMemo(
     () => Array.from(new Set(tables.map((tb) => tb.maxnumcust ?? 0))).sort((a, b) => a - b),
@@ -87,7 +79,9 @@ export function TableGrid({
   );
 
   const resolveState = (table: TableSetup): TableState => {
-    if (!table.canreserve) return 'unavailable';
+    // Wins over whatever the bookings say about the table: the store has taken it
+    // out of service, so it is never seatable, however free the window looks.
+    if (!isTableReservable(table)) return 'unavailable';
     return tableInfo.get(table.tablenum)?.state ?? 'available';
   };
 
@@ -124,21 +118,30 @@ export function TableGrid({
   // the party — turn it on rather than leaving every table greyed out. It stays
   // a normal toggle afterwards, so staff can switch back.
   const anyTableFitsAlone = useMemo(
-    () => tables.some((tb) => resolveState(tb) === 'available' && (tb.maxnumcust ?? 0) >= partySize),
+    () =>
+      tables.some(
+        (tb) =>
+          resolveState(tb) !== 'unavailable' &&
+          !isTableBlocked(tableInfo.get(tb.tablenum)) &&
+          (tb.maxnumcust ?? 0) >= partySize,
+      ),
     // eslint-disable-next-line react-hooks/exhaustive-deps
     [tables, tableInfo, partySize],
   );
 
   useEffect(() => {
-    if (!anyTableFitsAlone) setMergeMode(true);
-  }, [anyTableFitsAlone]);
+    if (!readOnly && !anyTableFitsAlone) onMergeModeChange(true);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [anyTableFitsAlone, readOnly]);
 
   const statusFilters: { value: StatusFilter; label: string }[] = [
     { value: 'all', label: t('seating.statusAll') },
     { value: 'available', label: t('seating.legendAvailable') },
+    { value: 'upcoming', label: t('seating.legendUpcoming') },
     { value: 'reserved', label: t('seating.legendReserved') },
     { value: 'occupied', label: t('seating.legendOccupied') },
     { value: 'overdue', label: t('seating.legendOverdue') },
+    { value: 'posOpen', label: t('seating.legendPosOpen') },
     { value: 'merged', label: t('seating.legendMerged') },
     { value: 'unavailable', label: t('seating.legendUnavailable') },
   ];
@@ -147,45 +150,48 @@ export function TableGrid({
   const activeStatusLabel = statusFilters.find((sf) => sf.value === statusFilter)?.label;
 
   if (tables.length === 0) {
-    return <p className="py-8 text-center text-sm text-slate-400">{t('seating.noTables')}</p>;
+    return <p className="py-6 text-center text-sm text-muted">{t('seating.noTables')}</p>;
   }
 
   return (
     <div>
-      <div className="mb-3 flex flex-wrap items-center gap-2">
+      <div className="mb-2 flex flex-wrap items-center gap-1.5">
         <button
           onClick={() => setFiltersOpen((v) => !v)}
           className={`chip-btn flex items-center gap-1.5 rounded-full px-3 text-xs font-medium ${
-            activeFilterCount > 0
-              ? 'bg-gradient-to-br from-[#ef4444] to-[#dc2626] text-white'
-              : 'bg-slate-800/50 text-slate-300 hover:bg-slate-700/50'
+            activeFilterCount > 0 ? 'pill-on' : 'pill'
           }`}
         >
           {t('seating.filters')}
           {activeFilterCount > 0 && (
-            <span className="flex h-4 min-w-4 items-center justify-center rounded-full bg-white/20 px-1 text-[10px]">
+            <span className="flex h-4 min-w-4 items-center justify-center rounded-full bg-white/25 px-1 text-[10px]">
               {activeFilterCount}
             </span>
           )}
-          <span className="text-[10px]">{filtersOpen ? '▲' : '▼'}</span>
+          <ChevronDownIcon size={13} className={filtersOpen ? 'rotate-180' : ''} />
         </button>
         {!readOnly && (
-          <button
-            onClick={() => setMergeMode((v) => !v)}
-            aria-pressed={mergeMode}
+          <label
             title={t('seating.mergeModeHint')}
-            className={`chip-btn flex items-center gap-1.5 rounded-full px-3 text-xs font-medium ${
+            className={`chip-btn flex cursor-pointer select-none items-center gap-1.5 rounded-full px-3 text-xs font-medium ${
               mergeMode
-                ? 'border border-indigo-400/40 bg-indigo-500/20 text-indigo-200'
-                : 'bg-slate-800/50 text-slate-300 hover:bg-slate-700/50'
+                ? 'border border-[var(--merge-line)] bg-[var(--merge-bg)] text-merge'
+                : 'pill'
             }`}
           >
-            ⇔ {t('seating.mergeMode')}
-          </button>
+            <input
+              type="checkbox"
+              checked={mergeMode}
+              onChange={(e) => onMergeModeChange(e.target.checked)}
+              className="h-3.5 w-3.5 accent-[var(--merge-ink)]"
+            />
+            <MergeIcon size={15} />
+            {t('seating.mergeMode')}
+          </label>
         )}
         {filterBarExtra}
         {!filtersOpen && activeFilterCount > 0 && (
-          <span className="text-xs text-slate-400">
+          <span className="text-xs text-muted">
             {capacityFilter !== CAPACITY_ALL && t('seating.filterSeats', { count: Number(capacityFilter) })}
             {capacityFilter !== CAPACITY_ALL && statusFilter !== 'all' && ' · '}
             {statusFilter !== 'all' && activeStatusLabel}
@@ -194,15 +200,13 @@ export function TableGrid({
       </div>
 
       {filtersOpen && (
-        <div className="mb-3 space-y-2 rounded-xl border border-white/10 bg-slate-900/40 p-3">
+        <div className="mb-2 space-y-1.5 rounded-xl border border-line bg-surface p-2">
           {capacityOptions.length > 1 && (
-            <div className="flex flex-wrap gap-2">
+            <div className="flex flex-wrap gap-1.5">
               <button
                 onClick={() => setCapacityFilter(CAPACITY_ALL)}
                 className={`chip-btn rounded-full px-3 text-xs font-medium ${
-                  capacityFilter === CAPACITY_ALL
-                    ? 'bg-gradient-to-br from-[#ef4444] to-[#dc2626] text-white'
-                    : 'bg-slate-800/50 text-slate-300 hover:bg-slate-700/50'
+                  capacityFilter === CAPACITY_ALL ? 'pill-on' : 'pill'
                 }`}
               >
                 {t('seating.filterAll')}
@@ -212,9 +216,7 @@ export function TableGrid({
                   key={cap}
                   onClick={() => setCapacityFilter(String(cap))}
                   className={`chip-btn rounded-full px-3 text-xs font-medium ${
-                    capacityFilter === String(cap)
-                      ? 'bg-gradient-to-br from-[#ef4444] to-[#dc2626] text-white'
-                      : 'bg-slate-800/50 text-slate-300 hover:bg-slate-700/50'
+                    capacityFilter === String(cap) ? 'pill-on' : 'pill'
                   }`}
                 >
                   {t('seating.filterSeats', { count: cap })}
@@ -223,15 +225,13 @@ export function TableGrid({
             </div>
           )}
 
-          <div className="flex flex-wrap gap-2">
+          <div className="flex flex-wrap gap-1.5">
             {statusFilters.map((sf) => (
               <button
                 key={sf.value}
                 onClick={() => setStatusFilter(sf.value)}
                 className={`chip-btn rounded-full px-3 text-xs font-medium ${
-                  statusFilter === sf.value
-                    ? 'bg-gradient-to-br from-[#ef4444] to-[#dc2626] text-white'
-                    : 'bg-slate-800/50 text-slate-300 hover:bg-slate-700/50'
+                  statusFilter === sf.value ? 'pill-on' : 'pill'
                 }`}
               >
                 {sf.label}
@@ -242,27 +242,27 @@ export function TableGrid({
       )}
 
       {filteredTables.length === 0 ? (
-        <p className="py-8 text-center text-sm text-slate-400">{t('seating.noTablesMatchFilter')}</p>
+        <p className="py-6 text-center text-sm text-muted">{t('seating.noTablesMatchFilter')}</p>
       ) : (
-        <div className="space-y-5">
+        <div className="space-y-3">
           {sections.map((section) => (
             <div key={section.label}>
-              <h3 className="mb-2 text-xs font-semibold uppercase tracking-wide text-slate-500">
+              <h3 className="mb-1.5 text-[11px] font-semibold uppercase tracking-wide text-faint">
                 {section.label}
               </h3>
-              <div className="grid grid-cols-2 gap-3 sm:grid-cols-3 md:grid-cols-4 xl:grid-cols-5">
+              <div className="grid grid-cols-2 gap-2 sm:grid-cols-3 md:grid-cols-4 xl:grid-cols-5 2xl:grid-cols-6">
                 {section.tables.map((table) => {
                   const info = tableInfo.get(table.tablenum);
                   const state = resolveState(table);
                   const selected = selectedTablenums.has(table.tablenum);
-                  // Only surface the "own table" badge when the table isn't already
-                  // flagged as blocked by some OTHER booking (state undefined here
-                  // just means nothing else claims it right now).
-                  const isOwn = ownTablenums?.has(table.tablenum) && !state;
+                  // Only surface the "own table" badge when no OTHER booking
+                  // blocks the table — an `upcoming` hold elsewhere in the day
+                  // doesn't stop this guest sitting here now.
+                  const isOwn = ownTablenums?.has(table.tablenum) && !isTableBlocked(info) && state !== 'unavailable';
                   // In merge mode a table that can't hold the party alone is
                   // still a valid piece of a combined set.
                   const tooSmall = !mergeMode && (table.maxnumcust ?? 0) < partySize;
-                  const isUnavailableState = state === 'reserved' || state === 'occupied' || state === 'overdue' || state === 'unavailable';
+                  const isUnavailableState = isTableBlocked(info) || state === 'unavailable';
                   const disabledByFilter = !selected && (isUnavailableState || tooSmall);
                   const disabled = readOnly || disabledByFilter;
                   const style = STATE_STYLES[state];
@@ -273,32 +273,37 @@ export function TableGrid({
                         disabled={disabled}
                         onClick={() => onToggle(table)}
                         title={info?.merged && info.mergedWith?.length ? `${t('seating.legendMerged')} #${info.mergedWith.join(', #')}` : undefined}
-                        className={`touch-btn flex w-full flex-col items-start gap-1.5 rounded-xl border-2 p-3 text-left transition ${
+                        className={`touch-btn flex w-full flex-col items-start gap-1 rounded-xl border-2 p-2.5 text-left transition ${
                           selected
-                            ? 'border-white bg-gradient-to-br from-[#ef4444] to-[#dc2626] text-white shadow-[0_0_20px_rgba(239,68,68,0.45)]'
+                            ? 'tbl-selected'
                             : isOwn
-                              ? 'border-violet-400/50 bg-violet-950/20 text-violet-200'
+                              ? 'tbl-own'
                               : disabledByFilter && !isUnavailableState
-                                ? 'cursor-not-allowed border-white/5 bg-slate-800/30 text-slate-500'
-                                : `${style.card} ${readOnly ? 'cursor-default' : ''}`
+                                ? 'tbl-unavailable cursor-not-allowed'
+                                : `${style.card} ${readOnly ? 'cursor-default' : disabled ? 'cursor-not-allowed' : ''}`
                         }`}
                       >
                         <div className="flex w-full items-center justify-between">
                           <span className="flex items-center gap-1 text-base font-semibold">
-                            {info?.merged && <span className="text-indigo-300">⇔</span>}
+                            {info?.merged && <MergeIcon size={15} className="text-merge" />}
                             #{table.tablenum}
                           </span>
-                          <span className="text-xs opacity-80">
-                            👥 {table.maxnumcust ?? table.minnumcust ?? 0} {t('seating.seats')}
+                          <span className="flex items-center gap-1 text-xs opacity-75">
+                            <UsersIcon size={13} />
+                            {table.maxnumcust ?? table.minnumcust ?? 0} {t('seating.seats')}
                           </span>
                         </div>
-                        <span
-                          className={`flex items-center gap-1.5 text-xs font-medium ${
-                            selected ? 'text-white' : isOwn ? 'text-violet-300' : style.chip
-                          }`}
-                        >
-                          <span className={`h-1.5 w-1.5 rounded-full ${selected ? 'bg-white' : isOwn ? 'bg-violet-400' : style.dot}`} />
-                          {isOwn && !selected ? t('seating.ownTable') : t(style.label)}
+                        <span className="tbl-ink flex items-center gap-1.5 text-xs font-medium">
+                          <span className="h-1.5 w-1.5 shrink-0 rounded-full bg-current" />
+                          {isOwn && !selected
+                            ? t('seating.ownTable')
+                            : state === 'upcoming' && info?.nextTime
+                              ? t('seating.upcomingAt', { time: info.nextTime.slice(0, 5) })
+                              : // Busy now, free for the window being held. The suffix is
+                                // optional — an empty translation shows the state alone.
+                                info?.advisory && t('seating.freeForThisSlot')
+                                ? `${t(style.label)} ${t('seating.freeForThisSlot')}`
+                                : t(style.label)}
                         </span>
                       </button>
                       {info != null && info.globalIds.length > 0 && (
@@ -306,7 +311,7 @@ export function TableGrid({
                           onClick={() => onViewBooking(info.globalIds)}
                           aria-label={t('seating.viewBooking')}
                           title={t('seating.viewBooking')}
-                          className="absolute -right-1.5 -top-1.5 flex h-6 min-w-6 items-center justify-center rounded-full bg-slate-900 px-1 text-xs text-white shadow ring-1 ring-white/20 hover:bg-slate-700"
+                          className="absolute -right-1.5 -top-1.5 flex h-5 min-w-5 items-center justify-center rounded-full bg-ink px-1 text-[11px] font-semibold text-[var(--panel)] shadow ring-1 ring-line transition hover:opacity-85"
                         >
                           {info.globalIds.length > 1 ? info.globalIds.length : 'i'}
                         </button>

@@ -21,10 +21,12 @@ export function LoginPage() {
 
   return (
     <div className="flex min-h-screen items-center justify-center p-4">
-      <form onSubmit={onSubmit} className="glass-card w-full max-w-sm p-8">
-        <div className="mb-6 flex flex-col items-center text-center">
-          <img src="/media/logo.png" alt="Logo" className="mb-3 h-14 w-auto object-contain" />
-          <h1 className="text-2xl font-bold text-white">{t('login.title')}</h1>
+      <form onSubmit={onSubmit} className="glass-card w-full max-w-sm p-6">
+        <div className="mb-5 flex flex-col items-center text-center">
+          {/* Bigger than the app bar's copy — the crop is percentage-based, so
+              overriding the box size rescales the artwork with it. */}
+          <span className="brand-mark mb-4 h-[54px] w-[118px]" role="img" aria-label="SpeedUP" />
+          <h1 className="text-xl font-bold text-ink">{t('login.title')}</h1>
         </div>
         <label className="field-label">{t('login.username')}</label>
         <input

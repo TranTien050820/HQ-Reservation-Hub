@@ -91,7 +91,6 @@
     "restaurants": {
       "heading": "Restaurants taking reservations",
       "subtitle": "Showing tables for {{count}} {{guestLabel}} on {{date}}",
-      "empty": "No restaurants are configured for this site yet.",
       "loading": "Loading restaurants…"
     },
     "cta": {
@@ -225,5 +224,50 @@
       "100": "Not confirmed by restaurant",
       "unknown": "Unknown"
     }
+  },
+  "preorder": {
+    "title": "Pre-order your food",
+    "subtitle": "Choose your dishes now — the kitchen starts them once you are seated.",
+    "back": "Back",
+    "ctaTitle": "Pre-order your food",
+    "ctaSubtitle": "Pick your dishes ahead of time so they arrive soon after you sit down.",
+    "ctaButton": "Pre-order food",
+    "ctaShort": "Pre-order",
+    "loading": "Loading…",
+    "loadError": "Could not load the menu",
+    "cartError": "Could not update your selection",
+    "checkoutError": "Could not send your pre-order",
+    "menuNotConfigured": "This restaurant hasn't opened its online menu yet. You can order at the table when you arrive.",
+    "missingReservation": "A reservation number is required to pre-order.",
+    "emptyCategory": "No dishes in this section.",
+    "add": "Add",
+    "choose": "Choose",
+    "adding": "Adding…",
+    "addToCart": "Add to order",
+    "chooseOne": "Choose 1",
+    "chooseUpTo": "Choose up to {{count}}",
+    "itemNote": "Note for the kitchen",
+    "itemNotePlaceholder": "e.g. no coriander",
+    "decrease": "Decrease quantity",
+    "increase": "Increase quantity",
+    "remove": "Remove",
+    "cartTitle": "Your pre-order",
+    "cartEmpty": "No dishes chosen yet.",
+    "subtotal": "Subtotal",
+    "total": "Total",
+    "taxNote": "Tax and service charge are calculated when you confirm.",
+    "confirm": "Confirm pre-order",
+    "confirmHint": "Nothing is charged now — you pay at the restaurant.",
+    "confirmWithCount": "Confirm order ({{count}})",
+    "submitting": "Sending…",
+    "placedTitle": "Pre-order {{number}} received",
+    "placedTitleShort": "Pre-orders placed",
+    "paymentPending": "This restaurant asks for payment before your visit — they will contact you with the details.",
+    "conflictTitle": "Some dishes changed",
+    "conflictSubtitle": "Please review the changes below, then confirm again.",
+    "issueSoldOut": "{{name}} is no longer available",
+    "acceptChanges": "Update my order",
+    "rebuilding": "Updating…",
+    "backToBookings": "My reservations"
   }
 }

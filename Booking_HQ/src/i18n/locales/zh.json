@@ -91,7 +91,6 @@
     "restaurants": {
       "heading": "可预订门店",
       "subtitle": "正在为 {{date}}、{{count}}{{guestLabel}} 显示可用餐桌",
-      "empty": "该站点暂未配置任何门店。",
       "loading": "正在加载门店列表…"
     },
     "cta": {
@@ -215,5 +214,50 @@
       "8": "已结束",
       "unknown": "未知"
     }
+  },
+  "preorder": {
+    "title": "提前点餐",
+    "subtitle": "现在选好菜品，入座后厨房即可开始制作。",
+    "back": "返回",
+    "ctaTitle": "提前点餐",
+    "ctaSubtitle": "提前选好菜品，入座后很快就能上菜。",
+    "ctaButton": "提前点餐",
+    "ctaShort": "提前点餐",
+    "loading": "加载中…",
+    "loadError": "无法加载菜单",
+    "cartError": "无法更新已选菜品",
+    "checkoutError": "无法提交预点订单",
+    "menuNotConfigured": "本店尚未开放线上菜单，请到店后在餐桌点餐。",
+    "missingReservation": "提前点餐需要预订编号。",
+    "emptyCategory": "该分类暂无菜品。",
+    "add": "添加",
+    "choose": "选择",
+    "adding": "添加中…",
+    "addToCart": "加入订单",
+    "chooseOne": "选择 1 项",
+    "chooseUpTo": "最多选择 {{count}} 项",
+    "itemNote": "给厨房的备注",
+    "itemNotePlaceholder": "例如：不要香菜",
+    "decrease": "减少数量",
+    "increase": "增加数量",
+    "remove": "移除",
+    "cartTitle": "预点内容",
+    "cartEmpty": "尚未选择菜品。",
+    "subtotal": "小计",
+    "total": "合计",
+    "taxNote": "税费和服务费将在确认时计算。",
+    "confirm": "确认预点",
+    "confirmHint": "现在不会扣款，到店结账即可。",
+    "confirmWithCount": "确认 {{count}} 项",
+    "submitting": "提交中…",
+    "placedTitle": "已收到预点订单 {{number}}",
+    "placedTitleShort": "已提交的预点订单",
+    "paymentPending": "本店需要到店前付款，我们会与您联系说明付款方式。",
+    "conflictTitle": "部分菜品有变动",
+    "conflictSubtitle": "请查看以下变动后再次确认。",
+    "issueSoldOut": "{{name}} 已售完",
+    "acceptChanges": "更新我的订单",
+    "rebuilding": "更新中…",
+    "backToBookings": "我的预订"
   }
 }

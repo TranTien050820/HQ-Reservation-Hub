@@ -110,6 +110,15 @@ export default function MyBookingsPage() {
           >
             {t('myBookings.viewDetails')}
           </Link>
+          {isUpcomingBooking(booking) && booking.reservationNo && (
+            <Link
+              to={`/${publicKey}/preorder/${encodeURIComponent(booking.reservationNo)}`}
+              state={{ booking }}
+              className="rounded-lg bg-resy-red px-4 py-2 text-center text-sm font-medium text-white transition-colors hover:bg-red-600"
+            >
+              {t('preorder.ctaShort')}
+            </Link>
+          )}
           {canCancel && (
             <button
               onClick={() => handleCancel(booking)}

@@ -1,18 +1,20 @@
 import { useTranslation } from 'react-i18next';
 import { WAITLIST_STATUS_CONFIG, WaitlistStatus, type ReservationWaitlist } from '../types';
+import { NoteIcon } from './icons';
 import {
   STALE_WAIT_MINUTES,
   avatarColor,
   elapsedMinutes,
   formatHHmm,
   initialsOf,
+  isVip,
   waitTone,
 } from '../utils/waitlist';
 
 const TONE_STYLES = {
-  calm: 'bg-slate-800/60 text-slate-300',
-  warn: 'bg-amber-500/15 text-amber-300',
-  urgent: 'bg-red-500/20 text-red-300',
+  calm: 'bg-[var(--surface-hover)] text-muted',
+  warn: 'bg-[var(--warn-bg)] text-warn',
+  urgent: 'bg-[var(--bad-bg)] text-bad',
 } as const;
 
 interface WaitlistCardProps {
@@ -50,7 +52,7 @@ export function WaitlistCard({
 }: WaitlistCardProps) {
   const { t } = useTranslation();
   const cfg = WAITLIST_STATUS_CONFIG[entry.status];
-  const isVip = (entry.priority ?? 0) > 0;
+  const vip = isVip(entry);
   const isWaiting = entry.status === WaitlistStatus.Waiting;
   const isConfirmed = entry.status === WaitlistStatus.Confirmed;
   const isReserved = entry.status === WaitlistStatus.Reserved;
@@ -64,13 +66,13 @@ export function WaitlistCard({
 
   return (
     <div
-      className={`glass-card p-4 ${
-        isStale ? 'ring-1 ring-red-500/50' : isVip && isOpen ? 'ring-1 ring-[#ffd700]/50' : ''
+      className={`glass-card p-3 ${
+        isStale ? 'ring-1 ring-[var(--bad-ink)]' : vip && isOpen ? 'ring-1 ring-[var(--gold)]' : ''
       }`}
     >
-      <div className="flex flex-wrap items-start gap-3">
+      <div className="flex flex-wrap items-start gap-2.5">
         {queuePosition != null && (
-          <span className="flex h-9 w-9 shrink-0 items-center justify-center rounded-xl bg-black/30 text-sm font-bold text-slate-300">
+          <span className="flex h-9 w-9 shrink-0 items-center justify-center rounded-lg bg-[var(--surface-hover)] text-sm font-bold text-ink">
             {queuePosition}
           </span>
         )}
@@ -84,8 +86,8 @@ export function WaitlistCard({
 
         <div className="min-w-0 flex-1">
           <div className="flex flex-wrap items-center gap-2">
-            <p className="font-semibold text-white">{entry.guestName}</p>
-            {isVip && <span className="chip bg-[#ffd700] text-black">{t('waitlist.vipBadge')}</span>}
+            <p className="font-semibold text-ink">{entry.guestName}</p>
+            {vip && <span className="chip bg-[var(--gold)] text-[var(--gold-fg)]">{t('waitlist.vipBadge')}</span>}
             <span className="chip text-white" style={{ backgroundColor: cfg?.color ?? '#64748b' }}>
               {t(cfg?.label ?? '')}
             </span>
@@ -96,30 +98,35 @@ export function WaitlistCard({
             )}
           </div>
 
-          <p className="mt-1 text-sm text-slate-400">
+          <p className="mt-0.5 text-sm text-muted">
             {entry.phoneNumber} · {entry.partySize} {t('waitlist.guests')}
             {entry.zoneName ? ` · ${entry.zoneName}` : ''}
             {entry.expectedTime ? ` · ${formatHHmm(entry.expectedTime)}` : ''}
           </p>
 
-          {entry.notes && <p className="mt-1 text-xs text-slate-500">📝 {entry.notes}</p>}
+          {entry.notes && (
+            <p className="mt-0.5 flex items-start gap-1.5 text-xs text-faint">
+              <NoteIcon size={13} className="mt-px shrink-0" />
+              {entry.notes}
+            </p>
+          )}
 
-          {isStale && <p className="mt-1 text-xs font-medium text-red-400">{t('waitlist.staleHint')}</p>}
+          {isStale && <p className="mt-0.5 text-xs font-medium text-bad">{t('waitlist.staleHint')}</p>}
 
           {isReserved && entry.reservationNo && (
-            <p className="mt-1 font-mono text-xs text-emerald-300">
+            <p className="mt-0.5 font-mono text-xs text-ok">
               {t('seating.reservationCode')} #{entry.reservationNo}
             </p>
           )}
         </div>
       </div>
 
-      <div className="mt-3 flex flex-wrap gap-2 border-t border-white/5 pt-3">
+      <div className="mt-2 flex flex-wrap gap-1.5 border-t border-line-soft pt-2">
         {isWaiting && (
           <button
             onClick={() => onConfirm(entry)}
             disabled={busy}
-            className="chip-btn btn-primary rounded-xl px-4 text-sm font-semibold"
+            className="chip-btn btn-primary rounded-lg px-3.5 text-sm font-semibold"
           >
             {t('waitlist.confirm')}
           </button>
@@ -128,7 +135,7 @@ export function WaitlistCard({
           <button
             onClick={() => onSeat(entry)}
             disabled={busy}
-            className="chip-btn btn-success rounded-xl px-4 text-sm font-semibold"
+            className="chip-btn btn-success rounded-lg px-3.5 text-sm font-semibold"
           >
             {t('waitlist.seat')}
           </button>
@@ -138,7 +145,7 @@ export function WaitlistCard({
           <button
             onClick={() => onOpenBooking(entry)}
             disabled={busy}
-            className="chip-btn btn-primary rounded-xl px-4 text-sm font-semibold"
+            className="chip-btn btn-primary rounded-lg px-3.5 text-sm font-semibold"
           >
             {t('waitlist.openBooking')}
           </button>
@@ -147,7 +154,7 @@ export function WaitlistCard({
           <button
             onClick={() => onEdit(entry)}
             disabled={busy}
-            className="chip-btn btn-secondary rounded-xl px-4 text-sm font-medium"
+            className="chip-btn btn-secondary rounded-lg px-3.5 text-sm font-medium"
           >
             {t('waitlist.edit')}
           </button>
@@ -155,14 +162,14 @@ export function WaitlistCard({
         <button
           onClick={() => onNoShow(entry)}
           disabled={busy}
-          className="chip-btn btn-secondary rounded-xl px-4 text-sm font-medium text-amber-300"
+          className="chip-btn btn-secondary rounded-lg px-3.5 text-sm font-medium text-warn"
         >
           {t('waitlist.noShow')}
         </button>
         <button
           onClick={() => onCancel(entry)}
           disabled={busy}
-          className="chip-btn btn-secondary rounded-xl px-4 text-sm font-medium text-red-300"
+          className="chip-btn btn-secondary rounded-lg px-3.5 text-sm font-medium text-bad"
         >
           {t('waitlist.cancel')}
         </button>

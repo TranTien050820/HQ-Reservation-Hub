@@ -24,8 +24,8 @@ export class ErrorBoundary extends Component<Props, State> {
       return (
         <div className="flex min-h-screen items-center justify-center p-6">
           <div className="glass-card max-w-lg p-6 text-left">
-            <h1 className="mb-2 text-lg font-bold text-white">Something went wrong</h1>
-            <pre className="max-h-64 overflow-auto whitespace-pre-wrap text-xs text-red-300">
+            <h1 className="mb-2 text-lg font-bold text-ink">Something went wrong</h1>
+            <pre className="max-h-64 overflow-auto whitespace-pre-wrap text-xs text-bad">
               {this.state.error.message}
               {'\n'}
               {this.state.error.stack}

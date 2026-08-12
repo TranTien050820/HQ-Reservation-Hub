@@ -26,7 +26,7 @@ export interface SiteScope {
   statNum: number;
 }
 
-/** ReservationBookingStatus: 1=New 2=Confirm 3=Cancel 4=Reserved 5=Overdue 6=Seated 7=NoShow 8=Close */
+/** ReservationBookingStatus: 1=New 2=Confirm 3=Cancel 4=Reserved 5=Overdue 6=Seated 7=NoShow 8=Close 9=AutoClose 10=AutoCancel */
 export const BookingStatus = {
   New: 1,
   Confirm: 2,
@@ -36,9 +36,27 @@ export const BookingStatus = {
   Seated: 6,
   NoShow: 7,
   Close: 8,
+  /**
+   * Written by the backend's own housekeeping rather than by anything a hostess
+   * did: a table it closed out on a schedule (9) and a hold it released when
+   * nobody claimed it (10).
+   *
+   * Both are closed business by the time this app sees them, so they are
+   * deliberately absent from BOOKING_STATUS_CONFIG below and are counted as
+   * terminal by `isTerminalBooking` — the app never draws a chip for them and
+   * never lets one hold a table or a search result.
+   */
+  AutoClose: 9,
+  AutoCancel: 10,
 } as const;
 export type BookingStatusValue = (typeof BookingStatus)[keyof typeof BookingStatus];
 
+/**
+ * Chip label + colour per status. AutoClose(9) and AutoCancel(10) are absent on
+ * purpose: they must not be surfaced in this app, and every call site already
+ * guards on a missing entry (`{cfg && <chip/>}`), so leaving them out is what
+ * makes "don't show these" hold everywhere rather than at each render site.
+ */
 export const BOOKING_STATUS_CONFIG: Record<number, { label: string; color: string }> = {
   1: { label: 'status.new', color: '#64748b' },
   2: { label: 'status.confirm', color: '#3b82f6' },
@@ -143,6 +161,29 @@ export interface Section {
   descript?: string | null;
 }
 
+/**
+ * One open POS tab (GET /api/PosLocal/TabInfo). A row exists only while the POS
+ * has a live check on that table, so the mere presence of `tablenum` means the
+ * table is physically in use right now — regardless of `status`/`inUse`, which
+ * describe the check itself (course, held items, cashier lock), not whether the
+ * table is free.
+ */
+export interface PosTabInfo {
+  transact: number;
+  empnum?: number;
+  timestart?: string | null;
+  status?: number;
+  tablenum: number;
+  label?: string | null;
+  inUse?: number;
+  numCust?: number;
+  hasHoldFire?: number;
+  lastModified?: string | null;
+  course?: number;
+  lastHold?: string | null;
+  ccInfo?: string | null;
+}
+
 // ---- Reservation bookings (ReservationBookings entity) ----
 
 /** Nested seat-table row as returned inside a booking's `seatTables[]` (ReserSeatTablesQueryDTO shape). */
@@ -174,6 +215,21 @@ export interface ReservationExtraValueItem {
   fieldValue?: string | null;
   reservationNo?: string | null;
 }
+
+/** Payload item for a booking's custom-field answers (ReservationExtraValueItemDTO) — `fieldID` is numeric here, unlike ExtraFieldConfig's. */
+export interface ExtraValueItem {
+  fieldID: number;
+  fieldValue: string;
+}
+
+/** ExtraFieldConfig.fieldType — decides which input the form renders. */
+export const ExtraFieldType = {
+  Text: 0,
+  Number: 1,
+  Date: 2,
+  /** Value is an ExtraFieldOption.optionValue; the label comes from its optionText. */
+  Option: 3,
+} as const;
 
 /** Store-configured custom booking field (BookingExtraFieldConfigDTO — `fieldID` is a string here), from the ReservationLinks/Booking config payload. Used to resolve a booking's extraValues[].fieldID to a label. */
 export interface ExtraFieldConfig {
@@ -209,12 +265,22 @@ export interface ReservationBooking {
   reservationDate: string;
   reservationTime?: string | null;
   partySize: number;
+  /** Guests who actually turned up, entered by the hostess when seating — may differ from the booked partySize. */
+  actualQty?: number | null;
   channelID?: number | null;
   zoneID?: number | null;
   status: number;
   customerNote?: string | null;
   internalNote?: string | null;
   userCreated?: number | null;
+  /** The hostess account that seated the guest. */
+  userSeat?: number | null;
+  /**
+   * Stamped by the backend when the booking moved to Seated — when the guests
+   * actually sat down, which is not their booked `reservationTime`. Sent without
+   * a timezone offset, in the server's Vietnam wall-clock (see `parseServerTime`).
+   */
+  dateSeat?: string | null;
   dateCreated?: string | null;
   seatTables?: ReserSeatTableItem[] | null;
   extraValues?: ReservationExtraValueItem[] | null;
@@ -230,13 +296,19 @@ export interface CreateReservationBookingRequest {
   reservationDate: string;
   reservationTime?: string;
   partySize: number;
+  /** Guests who actually showed up — sent when seating, alongside `userSeat`. */
+  actualQty?: number;
   channelID?: number;
   zoneID?: number;
   status: number;
   customerNote?: string;
   internalNote?: string;
   userCreated?: number;
+  /** userId of the logged-in hostess doing the seating. */
+  userSeat?: number;
   seatTables?: SeatTableItem[];
+  /** Answers to the store's ExtraFieldConfigs — one item per visible field. */
+  extraValues?: ExtraValueItem[];
 }
 
 export type UpdateReservationBookingRequest = Partial<Omit<CreateReservationBookingRequest, 'userCreated'>> & {
@@ -385,6 +457,63 @@ export interface ReservationWaitlistFilters {
   pageSize?: number;
   sortField?: string;
   sortDesc?: boolean;
+}
+
+// ---- OrderHub pre-orders (OrderQueryDTO subset — api/OrderHub) ----
+
+/**
+ * The statuses a reservation's food sits in before check-in, and the only ones this app
+ * fetches. `scheduled` is the normal case; `awaiting_payment` and `payment_failed` mean the
+ * store asked for a deposit or full prepayment the guest hasn't settled, so Release leaves
+ * those behind. Anything past these has already gone to the kitchen.
+ *
+ * Deliberately the same three states the Cancel endpoint accepts: an order visible in this
+ * app is exactly an order the hostess can still call off.
+ */
+export const PRE_RELEASE_ORDER_STATUSES = ['scheduled', 'awaiting_payment', 'payment_failed'] as const;
+
+export interface PreOrderItem {
+  lineNo: number;
+  prodNum: number;
+  /** Dish name as it was when ordered — prices and names can drift before the guest arrives. */
+  nameSnapshot?: string | null;
+  qty: number;
+  unitPrice: number;
+  lineTotal: number;
+  /** `active` | `sold_out` | `removed` | `refunded`. */
+  lineStatus?: string | null;
+  note?: string | null;
+}
+
+/** One pre-ordered food order attached to a booking via `reservationNo`. */
+export interface PreOrder {
+  orderUid: string;
+  orderNumber?: string | null;
+  orderStatus: string;
+  /** `unpaid` | `paid` | `not_required` … — a deposit order shows here before it is settled. */
+  paymentStatus?: string | null;
+  channel?: string | null;
+  subtotal?: number;
+  grandTotal: number;
+  paidAmount?: number;
+  reservationNo?: string | null;
+  /** The booked date+time the guest chose at order time. */
+  scheduledFor?: string | null;
+  createdAt?: string | null;
+  items?: PreOrderItem[] | null;
+}
+
+/** Result of POST api/OrderHub/Reservation/{no}/Release (ReservationReleaseQueryDTO). */
+export interface ReservationReleaseResult {
+  reservationNo: string;
+  /** Orders sent to the kitchen. 0 with no warnings simply means there was nothing to send. */
+  released: number;
+  /** Orders that failed or had already been released — the rest still went through. */
+  skipped: number;
+  tableNum?: number | null;
+  orderUids: string[];
+  /** Human-readable notes, e.g. dishes whose price changed since the guest ordered. */
+  warnings: string[];
 }
 
 // ---- Auth (LoginResponseDTO / Users entity) ----

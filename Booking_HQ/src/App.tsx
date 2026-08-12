@@ -9,6 +9,7 @@ import BookPage from './pages/BookPage';
 import ConfirmationPage from './pages/ConfirmationPage';
 import MyBookingsPage from './pages/MyBookingsPage';
 import BookingDetailPage from './pages/BookingDetailPage';
+import PreOrderPage from './pages/PreOrderPage';
 
 /** Browsers keep scroll position across client-side navigations; jump to the top on every new page. */
 function ScrollToTop() {
@@ -33,6 +34,7 @@ export default function App() {
           <Route path="confirmation/:id" element={<ConfirmationPage />} />
           <Route path="bookings" element={<MyBookingsPage />} />
           <Route path="bookings/:id" element={<BookingDetailPage />} />
+          <Route path="preorder/:reservationNo" element={<PreOrderPage />} />
         </Route>
         <Route path="*" element={<NoStorePage />} />
       </Routes>

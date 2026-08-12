@@ -1,5 +1,232 @@
 @import "tailwindcss";
 
+/* Theme is driven by data-theme on <html> — set before first paint by the inline
+   script in index.html, and thereafter by ThemeProvider. Using an attribute
+   rather than a class keeps the pre-paint script a one-liner and lets the
+   `dark:` variant below keep working for the handful of one-off overrides. */
+@custom-variant dark (&:where([data-theme="dark"], [data-theme="dark"] *));
+
+/* ---------------------------------------------------------------------------
+   Palette
+   ---------------------------------------------------------------------------
+   Every surface, text and line colour is a variable, so the two themes are two
+   lists of values rather than two copies of the stylesheet.
+
+   Accent *hues* are shared (they are the SpeedCoreWeb brand), but each one
+   carries its own ink/wash/line per theme: emerald-300 is unreadable on white
+   and emerald-700 is invisible on indigo, so a single pair could never serve
+   both. Screens reference the tone, never the raw colour.
+   --------------------------------------------------------------------------- */
+:root {
+  color-scheme: light;
+
+  --app-bg: linear-gradient(135deg, #eef1f9 0%, #e6ebf6 45%, #f2f0f8 100%);
+
+  /* `faint` carries 10–11px labels (stat captions, section headings, optional
+     hints), so it is tuned to clear 4.5:1 on a card rather than to look light. */
+  --ink: #101828;
+  --muted: #4f5a71;
+  --faint: #5d6880;
+
+  /* Cards float above the page; panels (modals) sit on top of a scrim and must
+     be fully opaque so the screen below never shows through. */
+  --card: rgba(255, 255, 255, 0.82);
+  --card-line: rgba(16, 24, 40, 0.08);
+  --card-shadow: 0 1px 2px rgba(16, 24, 40, 0.04), 0 8px 24px rgba(16, 24, 40, 0.06);
+  --card-shadow-lift: 0 2px 4px rgba(16, 24, 40, 0.05), 0 16px 36px rgba(16, 24, 40, 0.12);
+
+  --bar: rgba(255, 255, 255, 0.78);
+  --bar-line: rgba(16, 24, 40, 0.09);
+  --bar-shadow: 0 1px 3px rgba(16, 24, 40, 0.05);
+  /* The lockup ships in two cuts — "UP" in black for light, white for dark. */
+  --logo: url('/media/logo-light.png');
+  --select-arrow: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='24' height='24' viewBox='0 0 24 24' fill='none' stroke='%234f5a71' stroke-width='2' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='m6 9 6 6 6-6'/%3E%3C/svg%3E");
+  --sunken-shadow: inset 0 1px 2px rgba(16, 24, 40, 0.05);
+  --panel: #ffffff;
+  --panel-shadow: 0 24px 60px rgba(16, 24, 40, 0.2);
+  --scrim: rgba(16, 24, 40, 0.35);
+
+  /* Inset blocks inside a card: stat tiles, note boxes, unselected pills. */
+  --surface: rgba(16, 24, 40, 0.045);
+  --surface-hover: rgba(16, 24, 40, 0.09);
+  --surface-line: rgba(16, 24, 40, 0.07);
+
+  /* Form controls read as cut-in on dark, raised on light. */
+  --sunken: #ffffff;
+  --sunken-focus: #ffffff;
+  --sunken-line: rgba(16, 24, 40, 0.16);
+
+  --line: rgba(16, 24, 40, 0.1);
+  --line-soft: rgba(16, 24, 40, 0.06);
+  --scrollbar: rgba(16, 24, 40, 0.22);
+
+  --primary: #ef4444;
+  --primary-strong: #dc2626;
+  --primary-ink: #b91c1c;
+  --primary-wash: rgba(239, 68, 68, 0.1);
+
+  --success: #059669;
+  --success-fg: #ffffff;
+
+  --violet: #7c3aed;
+
+  --gold: #eab308;
+  --gold-ink: #854d0e;
+  --gold-fg: #422006;
+
+  /* Tones: ink = text/dot, bg = wash, line = border. */
+  --ok-ink: #047857;
+  --ok-bg: rgba(16, 185, 129, 0.1);
+  --ok-line: rgba(5, 150, 105, 0.3);
+
+  --warn-ink: #96460b;
+  --warn-bg: rgba(245, 158, 11, 0.12);
+  --warn-line: rgba(217, 119, 6, 0.32);
+
+  --bad-ink: #b91c1c;
+  --bad-bg: rgba(239, 68, 68, 0.1);
+  --bad-line: rgba(220, 38, 38, 0.3);
+
+  --info-ink: #0369a1;
+  --info-bg: rgba(14, 165, 233, 0.1);
+  --info-line: rgba(2, 132, 199, 0.3);
+
+  --cool-ink: #0e7490;
+  --cool-bg: rgba(6, 182, 212, 0.1);
+  --cool-line: rgba(14, 116, 144, 0.3);
+
+  --pos-ink: #a21caf;
+  --pos-bg: rgba(217, 70, 239, 0.1);
+  --pos-line: rgba(162, 28, 175, 0.3);
+
+  --merge-ink: #4338ca;
+  --merge-bg: rgba(99, 102, 241, 0.12);
+  --merge-line: rgba(67, 56, 202, 0.32);
+
+  --own-ink: #6d28d9;
+  --own-bg: rgba(139, 92, 246, 0.12);
+  --own-line: rgba(109, 40, 217, 0.32);
+
+  --off-ink: #78849a;
+  --off-bg: rgba(16, 24, 40, 0.03);
+  --off-line: rgba(16, 24, 40, 0.07);
+}
+
+/* `:root[...]` rather than a bare attribute selector so the dark values outrank
+   the light ones on specificity, not merely on source order. */
+:root[data-theme="dark"] {
+  color-scheme: dark;
+
+  /* A plain neutral dark. The old indigo/violet cast tinted every neutral
+     surface on top of it, which is why cards read as purple rather than grey. */
+  --app-bg: linear-gradient(180deg, #0e1013 0%, #15181e 100%);
+
+  --ink: #ffffff;
+  --muted: #b6bece;
+  --faint: #a3abbe;
+
+  --card: rgba(255, 255, 255, 0.055);
+  --card-line: rgba(255, 255, 255, 0.1);
+  --card-shadow: 0 1px 2px rgba(0, 0, 0, 0.2), 0 10px 30px rgba(0, 0, 0, 0.3);
+  --card-shadow-lift: 0 2px 4px rgba(0, 0, 0, 0.25), 0 18px 44px rgba(0, 0, 0, 0.45);
+
+  --bar: rgba(18, 21, 26, 0.8);
+  --bar-line: rgba(255, 255, 255, 0.09);
+  --bar-shadow: 0 1px 3px rgba(0, 0, 0, 0.3);
+  --logo: url('/media/logo-dark.png');
+  --select-arrow: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='24' height='24' viewBox='0 0 24 24' fill='none' stroke='%23b6bece' stroke-width='2' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='m6 9 6 6 6-6'/%3E%3C/svg%3E");
+  --sunken-shadow: inset 0 1px 2px rgba(0, 0, 0, 0.25);
+  --panel: #1a1d23;
+  --panel-shadow: 0 24px 60px rgba(0, 0, 0, 0.6);
+  --scrim: rgba(0, 0, 0, 0.7);
+
+  --surface: rgba(255, 255, 255, 0.06);
+  --surface-hover: rgba(255, 255, 255, 0.12);
+  --surface-line: rgba(255, 255, 255, 0.08);
+
+  --sunken: rgba(0, 0, 0, 0.2);
+  --sunken-focus: rgba(0, 0, 0, 0.3);
+  --sunken-line: rgba(255, 255, 255, 0.1);
+
+  --line: rgba(255, 255, 255, 0.1);
+  --line-soft: rgba(255, 255, 255, 0.05);
+  --scrollbar: rgba(255, 255, 255, 0.15);
+
+  --primary: #ef4444;
+  --primary-strong: #dc2626;
+  --primary-ink: #fca5a5;
+  --primary-wash: rgba(239, 68, 68, 0.2);
+
+  --success: #00ff88;
+  --success-fg: #003018;
+
+  --violet: #8e3aff;
+
+  --gold: #ffd700;
+  --gold-ink: #ffd700;
+  --gold-fg: #2b1a00;
+
+  --ok-ink: #6ee7b7;
+  --ok-bg: rgba(16, 185, 129, 0.12);
+  --ok-line: rgba(16, 185, 129, 0.32);
+
+  --warn-ink: #fcd34d;
+  --warn-bg: rgba(245, 158, 11, 0.12);
+  --warn-line: rgba(245, 158, 11, 0.32);
+
+  --bad-ink: #fca5a5;
+  --bad-bg: rgba(239, 68, 68, 0.14);
+  --bad-line: rgba(239, 68, 68, 0.34);
+
+  --info-ink: #7dd3fc;
+  --info-bg: rgba(56, 189, 248, 0.12);
+  --info-line: rgba(56, 189, 248, 0.34);
+
+  --cool-ink: #67e8f9;
+  --cool-bg: rgba(34, 211, 238, 0.12);
+  --cool-line: rgba(34, 211, 238, 0.34);
+
+  --pos-ink: #f0abfc;
+  --pos-bg: rgba(232, 121, 249, 0.12);
+  --pos-line: rgba(232, 121, 249, 0.34);
+
+  --merge-ink: #a5b4fc;
+  --merge-bg: rgba(129, 140, 248, 0.16);
+  --merge-line: rgba(129, 140, 248, 0.36);
+
+  --own-ink: #c4b5fd;
+  --own-bg: rgba(167, 139, 250, 0.16);
+  --own-line: rgba(167, 139, 250, 0.38);
+
+  --off-ink: #8b97ab;
+  --off-bg: rgba(255, 255, 255, 0.03);
+  --off-line: rgba(255, 255, 255, 0.06);
+}
+
+/* `inline` so utilities emit `var(--ink)` directly instead of going through a
+   :root-level copy — the value then resolves against whichever theme block is
+   in scope, which is the whole point. */
+@theme inline {
+  --color-ink: var(--ink);
+  --color-muted: var(--muted);
+  --color-faint: var(--faint);
+  --color-line: var(--line);
+  --color-line-soft: var(--line-soft);
+  --color-surface: var(--surface);
+  --color-surface-hover: var(--surface-hover);
+  --color-sunken: var(--sunken);
+  --color-brand: var(--primary);
+  --color-brand-ink: var(--primary-ink);
+  --color-ok: var(--ok-ink);
+  --color-warn: var(--warn-ink);
+  --color-bad: var(--bad-ink);
+  --color-info: var(--info-ink);
+  --color-cool: var(--cool-ink);
+  --color-own: var(--own-ink);
+  --color-merge: var(--merge-ink);
+  --color-gold: var(--gold-ink);
+}
+
 @keyframes fadeIn {
   from { opacity: 0; transform: translateY(-4px); }
   to { opacity: 1; transform: translateY(0); }
@@ -10,49 +237,224 @@
   to { opacity: 1; transform: scale(1); }
 }
 
-html, body, #root {
-  height: 100%;
+@layer base {
+  html, body, #root {
+    height: 100%;
+  }
+
+  body {
+    margin: 0;
+    background: var(--app-bg);
+    background-attachment: fixed;
+    color: var(--ink);
+    font-family: 'Outfit', system-ui, -apple-system, "Segoe UI", Roboto, sans-serif;
+  }
+
+  * {
+    -webkit-tap-highlight-color: transparent;
+  }
+
+  ::selection {
+    background: var(--primary-wash);
+  }
+
+  ::-webkit-scrollbar {
+    width: 6px;
+    height: 6px;
+  }
+
+  ::-webkit-scrollbar-thumb {
+    background: var(--scrollbar);
+    border-radius: 10px;
+  }
+
+  /* Styling a scrollbar at all opts into the custom renderer, which brings back
+     the legacy stepper arrows at each end unless they are switched off. */
+  ::-webkit-scrollbar-button {
+    display: none;
+    width: 0;
+    height: 0;
+  }
+
+  ::-webkit-scrollbar-corner {
+    background: transparent;
+  }
 }
 
-body {
-  margin: 0;
-  /* Matches the SpeedCoreWeb Hostess screen: deep indigo/violet gradient */
-  background: linear-gradient(135deg, #0f0c29 0%, #302b63 50%, #24243e 100%);
-  background-attachment: fixed;
-  color: #ffffff;
-  font-family: 'Outfit', system-ui, -apple-system, "Segoe UI", Roboto, sans-serif;
-}
-
-* {
-  -webkit-tap-highlight-color: transparent;
-}
-
-::selection {
-  background: rgba(239, 68, 68, 0.35);
-}
-
-::-webkit-scrollbar {
-  width: 6px;
-  height: 6px;
-}
-
-::-webkit-scrollbar-thumb {
-  background: rgba(255, 255, 255, 0.15);
-  border-radius: 10px;
-}
+/* Everything below is in the `components` layer so plain Tailwind utilities
+   still win over it — `.field rounded-full`, `.note p-3` and the like have to
+   override these defaults, and an unlayered rule would beat every utility. */
+@layer components {
 
 .glass-card {
-  background: rgba(255, 255, 255, 0.05);
-  border: 1px solid rgba(255, 255, 255, 0.1);
-  backdrop-filter: blur(12px);
-  -webkit-backdrop-filter: blur(12px);
-  border-radius: 1.5rem;
-  box-shadow: 0 8px 32px rgba(0, 0, 0, 0.37);
-  transition: border-color 0.25s ease;
+  background: var(--card);
+  border: 1px solid var(--card-line);
+  backdrop-filter: blur(14px);
+  -webkit-backdrop-filter: blur(14px);
+  border-radius: 1.25rem;
+  box-shadow: var(--card-shadow);
+  transition: border-color 0.25s ease, box-shadow 0.25s ease, transform 0.25s ease;
+}
+
+/* ---------------------------------------------------------------------------
+   App bar — a full-bleed band, not a floating pill. The pill version read as a
+   cramped widget dropped on the page; a band anchors the app and gives the
+   logo and nav room to sit at a readable size.
+   --------------------------------------------------------------------------- */
+.app-bar {
+  background: var(--bar);
+  border-bottom: 1px solid var(--bar-line);
+  backdrop-filter: blur(18px) saturate(140%);
+  -webkit-backdrop-filter: blur(18px) saturate(140%);
+  box-shadow: var(--bar-shadow);
+}
+
+/* ---------------------------------------------------------------------------
+   Brand mark
+   ---------------------------------------------------------------------------
+   Both lockup PNGs are a 3508×2019 canvas whose artwork only occupies the middle
+   79% × 64% — dropped into an <img> it renders at about two thirds scale with
+   fat invisible margins, which is what made the header logo look shrunken.
+   The artwork is centred in that canvas, so zooming the background by
+   1 / 0.7919 and centring crops exactly to it.
+
+   The lockup spells "UP" in a solid colour, so it ships as two cuts and
+   `--logo` picks the one that reads on the current theme.
+   --------------------------------------------------------------------------- */
+.brand-mark {
+  display: block;
+  width: 70px;
+  height: 32px;
+  background-image: var(--logo);
+  background-repeat: no-repeat;
+  background-size: 126.3% auto;
+  background-position: center;
+}
+
+.nav-seg {
+  display: flex;
+  gap: 0.2rem;
+  padding: 0.25rem;
+  border-radius: 0.9rem;
+  background: var(--surface);
+  border: 1px solid var(--line-soft);
+}
+
+.nav-item {
+  display: flex;
+  align-items: center;
+  gap: 0.45rem;
+  padding: 0.5rem 0.85rem;
+  border-radius: 0.7rem;
+  font-size: 0.875rem;
+  font-weight: 600;
+  white-space: nowrap;
+  color: var(--muted);
+  transition: background 0.18s ease, color 0.18s ease, box-shadow 0.18s ease;
+}
+
+.nav-item:hover {
+  background: var(--surface-hover);
+  color: var(--ink);
+}
+
+.nav-item-on,
+.nav-item-on:hover {
+  background: linear-gradient(135deg, var(--primary), var(--primary-strong));
+  color: #fff;
+  box-shadow: 0 4px 14px rgba(239, 68, 68, 0.32);
+}
+
+/* ---------------------------------------------------------------------------
+   Search — input and its action live in ONE rounded shell. Splitting them into
+   two floating controls (as the first pass did) is what made the hero read as
+   two unrelated widgets instead of a single search affordance.
+   --------------------------------------------------------------------------- */
+.search-shell {
+  display: flex;
+  align-items: center;
+  gap: 0.6rem;
+  border-radius: 999px;
+  border: 1px solid var(--sunken-line);
+  background: var(--sunken);
+  padding: 0.4rem 0.4rem 0.4rem 1.35rem;
+  box-shadow: var(--sunken-shadow);
+  transition: border-color 0.2s ease, box-shadow 0.2s ease;
+}
+
+.search-shell:focus-within {
+  border-color: var(--primary);
+  box-shadow: 0 0 0 4px var(--primary-wash);
+}
+
+.search-shell input {
+  flex: 1;
+  min-width: 0;
+  min-height: 52px;
+  border: 0;
+  background: transparent;
+  outline: none;
+  color: var(--ink);
+  font-size: 1rem;
+}
+
+.search-shell input::placeholder {
+  color: var(--faint);
+}
+
+/* ---------------------------------------------------------------------------
+   Action / stat cards
+   --------------------------------------------------------------------------- */
+.icon-tile {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  flex-shrink: 0;
+  border-radius: 0.85rem;
+  background: var(--surface);
+  border: 1px solid var(--line-soft);
+  color: var(--muted);
+  transition: background 0.2s ease, color 0.2s ease, border-color 0.2s ease;
+}
+
+.action-card {
+  position: relative;
+  display: flex;
+  align-items: flex-start;
+  gap: 0.9rem;
+  text-align: left;
+  border-radius: 1.25rem;
+  background: var(--card);
+  border: 1px solid var(--card-line);
+  box-shadow: var(--card-shadow);
+  transition: transform 0.2s ease, border-color 0.2s ease, box-shadow 0.2s ease;
+}
+
+.action-card:hover {
+  transform: translateY(-3px);
+  border-color: var(--primary);
+  box-shadow: var(--card-shadow-lift);
+}
+
+.action-card:hover .icon-tile {
+  background: linear-gradient(135deg, var(--primary), var(--primary-strong));
+  border-color: transparent;
+  color: #fff;
+}
+
+.stat-card {
+  display: flex;
+  align-items: center;
+  gap: 0.7rem;
+  border-radius: 1rem;
+  background: var(--card);
+  border: 1px solid var(--card-line);
+  box-shadow: var(--card-shadow);
+  padding: 0.85rem 0.95rem;
 }
 
 .touch-btn {
-  min-height: 56px;
+  min-height: 52px;
   touch-action: manipulation;
   transition: transform 0.15s ease, box-shadow 0.2s ease, background 0.2s ease, border-color 0.2s ease, opacity 0.2s ease;
 }
@@ -61,11 +463,11 @@ body {
   transform: scale(0.98);
 }
 
-/* Compact touch target for small filter/tab pills — touch-btn's 56px min-height
-   is meant for primary actions (nav cards, submit, seat/close); applying it to
+/* Compact touch target for small filter/tab pills — touch-btn's min-height is
+   meant for primary actions (nav cards, submit, seat/close); applying it to
    dense filter chip rows blows them up into oversized bars. */
 .chip-btn {
-  min-height: 40px;
+  min-height: 38px;
   touch-action: manipulation;
   transition: transform 0.15s ease, box-shadow 0.2s ease, background 0.2s ease, border-color 0.2s ease, opacity 0.2s ease;
 }
@@ -74,16 +476,16 @@ body {
   transform: scale(0.98);
 }
 
-/* Primary action — matches SpeedCoreWeb --primary (#ef4444) */
+/* Primary action — SpeedCoreWeb --primary (#ef4444) */
 .btn-primary {
-  background: #ef4444;
-  color: white;
-  box-shadow: 0 4px 16px rgba(239, 68, 68, 0.35);
+  background: var(--primary);
+  color: #fff;
+  box-shadow: 0 4px 16px rgba(239, 68, 68, 0.3);
 }
 
 .btn-primary:hover:not(:disabled) {
   background: #f65f5f;
-  box-shadow: 0 6px 22px rgba(239, 68, 68, 0.5);
+  box-shadow: 0 6px 22px rgba(239, 68, 68, 0.45);
 }
 
 .btn-primary:disabled {
@@ -93,20 +495,24 @@ body {
 
 /* Secondary / neutral action */
 .btn-secondary {
-  background: rgba(255, 255, 255, 0.05);
-  color: white;
-  border: 1px solid rgba(255, 255, 255, 0.1);
+  background: var(--surface);
+  color: var(--ink);
+  border: 1px solid var(--line);
 }
 
 .btn-secondary:hover:not(:disabled) {
-  background: rgba(255, 255, 255, 0.12);
+  background: var(--surface-hover);
 }
 
-/* Success action — matches SpeedCoreWeb --success (#00ff88) */
+.btn-secondary:disabled {
+  opacity: 0.5;
+}
+
+/* Success action */
 .btn-success {
-  background: #00ff88;
-  color: #003018;
-  box-shadow: 0 4px 16px rgba(0, 255, 136, 0.25);
+  background: var(--success);
+  color: var(--success-fg);
+  box-shadow: 0 4px 16px rgba(5, 150, 105, 0.25);
 }
 
 .btn-success:hover:not(:disabled) {
@@ -118,21 +524,21 @@ body {
   box-shadow: none;
 }
 
-/* Danger action — matches SpeedCoreWeb --danger (#8e3aff) */
+/* Danger action */
 .btn-danger {
-  background: #8e3aff;
-  color: white;
-  box-shadow: 0 4px 16px rgba(142, 58, 255, 0.3);
+  background: var(--violet);
+  color: #fff;
+  box-shadow: 0 4px 16px rgba(124, 58, 237, 0.3);
 }
 
 .btn-danger:hover:not(:disabled) {
-  filter: brightness(1.15);
+  filter: brightness(1.12);
 }
 
-/* Warning / VIP action — matches SpeedCoreWeb --accent (#ffd700) */
+/* Warning / VIP action */
 .btn-warning {
-  background: #ffd700;
-  color: #2b1a00;
+  background: var(--gold);
+  color: var(--gold-fg);
 }
 
 .btn-warning:hover:not(:disabled) {
@@ -142,49 +548,222 @@ body {
 /* Form fields */
 .field {
   width: 100%;
-  border-radius: 12px;
-  border: 1px solid rgba(255, 255, 255, 0.1);
-  background: rgba(0, 0, 0, 0.2);
-  color: white;
+  border-radius: 10px;
+  border: 1px solid var(--sunken-line);
+  /* `background-color`, not the `background` shorthand: `.select` paints its
+     chevron as a background-image and the shorthand would erase it — including
+     on :focus, which made the arrow blink out while the field was in use. */
+  background-color: var(--sunken);
+  color: var(--ink);
   outline: none;
-  transition: border-color 0.2s ease, background 0.2s ease;
+  transition: border-color 0.2s ease, background 0.2s ease, box-shadow 0.2s ease;
+}
+
+.field::placeholder {
+  color: var(--faint);
 }
 
 .field:focus {
-  border-color: #ef4444;
-  background: rgba(0, 0, 0, 0.3);
+  border-color: var(--primary);
+  background-color: var(--sunken-focus);
+  box-shadow: 0 0 0 3px var(--primary-wash);
+}
+
+/* Native <select> draws an OS chevron that matches neither theme nor the rest
+   of the controls, so it is replaced with one of ours. */
+.select {
+  appearance: none;
+  -webkit-appearance: none;
+  background-image: var(--select-arrow);
+  background-repeat: no-repeat;
+  background-position: right 0.65rem center;
+  background-size: 16px 16px;
+  padding-right: 2.15rem;
+  cursor: pointer;
+}
+
+.select:disabled {
+  cursor: not-allowed;
+  opacity: 0.6;
+}
+
+/* The calendar/clock button inside date & time inputs — sized and given a hit
+   area instead of the cramped default glyph. `color-scheme` already flips it
+   between black and white per theme. */
+.field::-webkit-calendar-picker-indicator {
+  opacity: 0.6;
+  cursor: pointer;
+  padding: 4px;
+  margin-right: -2px;
+  border-radius: 6px;
+  transition: opacity 0.15s ease, background-color 0.15s ease;
+}
+
+.field::-webkit-calendar-picker-indicator:hover {
+  opacity: 1;
+  background-color: var(--surface-hover);
+}
+
+/* Inline strips that scroll sideways (serving-time slots, zone rails). The
+   page-wide 6px bar reads as a rule drawn under the row; this keeps the scroll
+   affordance without the strip looking like it has a border. */
+/* Deliberately no `scrollbar-width`: setting the standard property makes Chrome
+   ignore every ::-webkit-scrollbar rule below and fall back to the platform
+   scrollbar — on Windows that is a 10px bar with stepper arrows at both ends. */
+.scroll-x-soft {
+  overflow-x: auto;
+}
+
+.scroll-x-soft::-webkit-scrollbar {
+  height: 4px;
+}
+
+.scroll-x-soft::-webkit-scrollbar-track {
+  background: transparent;
+}
+
+.scroll-x-soft::-webkit-scrollbar-thumb {
+  background: var(--line);
+  border-radius: 999px;
+}
+
+/* Repeated at this specificity: the `components` layer rules above already opt
+   this element into the custom scrollbar, and the base-layer reset loses to
+   them on the same element. */
+.scroll-x-soft::-webkit-scrollbar-button {
+  display: none;
+  width: 0;
+  height: 0;
 }
 
 .field-label {
   display: block;
-  margin-bottom: 0.25rem;
-  font-size: 0.8rem;
-  font-weight: 500;
+  margin-bottom: 0.2rem;
+  font-size: 0.75rem;
+  font-weight: 600;
   letter-spacing: 0.02em;
-  color: #b0b0b0;
+  color: var(--muted);
 }
 
 /* Stat tile */
 .stat-tile {
-  border-radius: 0.75rem;
-  background: rgba(0, 0, 0, 0.2);
-  border: 1px solid rgba(255, 255, 255, 0.08);
-  padding: 0.6rem 0.4rem;
+  border-radius: 0.6rem;
+  background: var(--surface);
+  border: 1px solid var(--surface-line);
+  padding: 0.35rem 0.4rem;
+  line-height: 1.2;
 }
 
 /* Chip / badge */
 .chip {
   border-radius: 999px;
-  padding: 0.3rem 0.75rem;
-  font-size: 0.72rem;
+  padding: 0.2rem 0.6rem;
+  font-size: 0.7rem;
   font-weight: 700;
   letter-spacing: 0.02em;
+  white-space: nowrap;
 }
+
+/* ---------------------------------------------------------------------------
+   Pills — the filter/tab/zone chips repeated across every screen. Selected is
+   always the brand gradient; unselected is a neutral surface.
+   --------------------------------------------------------------------------- */
+.pill {
+  background: var(--surface);
+  color: var(--muted);
+  border: 1px solid transparent;
+}
+
+.pill:hover:not(:disabled) {
+  background: var(--surface-hover);
+  color: var(--ink);
+}
+
+.pill-on {
+  background: linear-gradient(135deg, var(--primary), var(--primary-strong));
+  color: #fff;
+  border: 1px solid transparent;
+  box-shadow: 0 4px 14px rgba(239, 68, 68, 0.3);
+}
+
+.pill-off {
+  background: var(--off-bg);
+  color: var(--off-ink);
+  border: 1px solid transparent;
+  cursor: not-allowed;
+}
+
+/* ---------------------------------------------------------------------------
+   Notes — the inline advisory strips ("POS unreachable", "party too big for the
+   selection", "this guest is already seated"). One class per tone so both
+   themes stay legible without a `dark:` on every element.
+   --------------------------------------------------------------------------- */
+.note {
+  border-radius: 0.7rem;
+  border: 1px solid;
+  padding: 0.4rem 0.65rem;
+  font-size: 0.75rem;
+  line-height: 1.15rem;
+}
+
+.note-ok { border-color: var(--ok-line); background: var(--ok-bg); color: var(--ok-ink); }
+.note-warn { border-color: var(--warn-line); background: var(--warn-bg); color: var(--warn-ink); }
+.note-bad { border-color: var(--bad-line); background: var(--bad-bg); color: var(--bad-ink); }
+.note-info { border-color: var(--info-line); background: var(--info-bg); color: var(--info-ink); }
 
 .modal-backdrop {
   animation: fadeIn 0.2s ease-out;
+  background: var(--scrim);
 }
 
 .modal-panel {
   animation: popIn 0.25s cubic-bezier(0.34, 1.56, 0.64, 1);
+  /* Opaque: .glass-card's translucent fill plus backdrop-blur lets the screen
+     underneath show through wherever backdrop-filter is unsupported/disabled. */
+  background: var(--panel);
+  box-shadow: var(--panel-shadow);
+}
+
+/* ---------------------------------------------------------------------------
+   Table states on the floor plan. Kept here rather than as Tailwind classes in
+   TableGrid so each state can carry a different ink/wash per theme — the washes
+   that read as "a tinted table" on indigo turn into grey smudges on white.
+   --------------------------------------------------------------------------- */
+.tbl { border-color: var(--line); background: var(--surface); color: var(--ink); }
+.tbl-ink { color: var(--muted); }
+
+.tbl-available { border-color: var(--ok-line); background: var(--ok-bg); color: var(--ink); }
+.tbl-available:hover:not(:disabled) { border-color: var(--ok-ink); }
+.tbl-available .tbl-ink { color: var(--ok-ink); }
+
+.tbl-upcoming { border-color: var(--cool-line); background: var(--cool-bg); color: var(--ink); }
+.tbl-upcoming:hover:not(:disabled) { border-color: var(--cool-ink); }
+.tbl-upcoming .tbl-ink { color: var(--cool-ink); }
+
+.tbl-reserved { border-color: var(--info-line); background: var(--info-bg); color: var(--info-ink); }
+.tbl-reserved .tbl-ink { color: var(--info-ink); }
+
+.tbl-occupied { border-color: var(--bad-line); background: var(--bad-bg); color: var(--bad-ink); }
+.tbl-occupied .tbl-ink { color: var(--bad-ink); }
+
+.tbl-overdue { border-color: var(--warn-line); background: var(--warn-bg); color: var(--warn-ink); }
+.tbl-overdue .tbl-ink { color: var(--warn-ink); }
+
+.tbl-posOpen { border-color: var(--pos-line); background: var(--pos-bg); color: var(--pos-ink); }
+.tbl-posOpen .tbl-ink { color: var(--pos-ink); }
+
+.tbl-unavailable { border-color: var(--off-line); background: var(--off-bg); color: var(--off-ink); }
+.tbl-unavailable .tbl-ink { color: var(--off-ink); }
+
+.tbl-own { border-color: var(--own-line); background: var(--own-bg); color: var(--own-ink); }
+.tbl-own .tbl-ink { color: var(--own-ink); }
+
+.tbl-selected {
+  border-color: var(--primary-strong);
+  background: linear-gradient(135deg, var(--primary), var(--primary-strong));
+  color: #fff;
+  box-shadow: 0 0 18px rgba(239, 68, 68, 0.4);
+}
+.tbl-selected .tbl-ink { color: #fff; }
+
 }

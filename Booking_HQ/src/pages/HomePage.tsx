@@ -108,50 +108,51 @@ export default function HomePage() {
         </div>
       </section>
 
-      <section className="mx-auto max-w-6xl px-6 py-14">
-        <div className="mb-6 flex items-end justify-between">
-          <div>
-            <h2 className="text-2xl font-bold">{t('home.restaurants.heading')}</h2>
-            <p className="mt-1 text-sm text-neutral-500">
-              {t('home.restaurants.subtitle', {
-                count: search.partySize,
-                guestLabel: t(search.partySize === 1 ? 'common.guest' : 'common.guests'),
-                date: formatDateHeading(search.date, i18n.language),
-              })}
-            </p>
+      {/* Nothing recommended, nothing to show: a heading over an empty grid reads as a store
+          with no tables left, which is the opposite of what an empty config means. */}
+      {recommendations.length > 0 && (
+        <section className="mx-auto max-w-6xl px-6 py-14">
+          <div className="mb-6 flex items-end justify-between">
+            <div>
+              <h2 className="text-2xl font-bold">{t('home.restaurants.heading')}</h2>
+              <p className="mt-1 text-sm text-neutral-500">
+                {t('home.restaurants.subtitle', {
+                  count: search.partySize,
+                  guestLabel: t(search.partySize === 1 ? 'common.guest' : 'common.guests'),
+                  date: formatDateHeading(search.date, i18n.language),
+                })}
+              </p>
+            </div>
           </div>
-        </div>
 
-        <div className="grid gap-6 sm:grid-cols-2 lg:grid-cols-3">
-          {recommendations.map((item) => (
-            <article
-              key={item.globalId}
-              className="group flex flex-col overflow-hidden rounded-2xl border border-neutral-200 bg-white shadow-sm transition-shadow hover:shadow-lg"
-            >
-              <div className="flex h-48 items-center justify-center bg-neutral-100 text-sm text-neutral-400">
-                {t('home.recommendations.comingSoon', { defaultValue: 'Photo coming soon' })}
-              </div>
-              <div className="flex flex-1 flex-col gap-2 p-5 text-left">
-                <h3 className="text-lg font-bold">
-                  {t('home.recommendations.storeFallback', {
-                    defaultValue: 'Store #{{id}}',
-                    id: item.recommendStatNum,
-                  })}
-                </h3>
-                <button
-                  onClick={goToRestaurant}
-                  className="mt-3 self-start rounded-lg border border-neutral-200 bg-white px-5 py-2 text-sm font-semibold text-neutral-700 transition-colors hover:border-resy-red hover:bg-resy-red hover:text-white"
-                >
-                  {t('common.viewAvailability')}
-                </button>
-              </div>
-            </article>
-          ))}
-          {recommendations.length === 0 && (
-            <p className="text-neutral-500">{t('home.restaurants.empty')}</p>
-          )}
-        </div>
-      </section>
+          <div className="grid gap-6 sm:grid-cols-2 lg:grid-cols-3">
+            {recommendations.map((item) => (
+              <article
+                key={item.globalId}
+                className="group flex flex-col overflow-hidden rounded-2xl border border-neutral-200 bg-white shadow-sm transition-shadow hover:shadow-lg"
+              >
+                <div className="flex h-48 items-center justify-center bg-neutral-100 text-sm text-neutral-400">
+                  {t('home.recommendations.comingSoon', { defaultValue: 'Photo coming soon' })}
+                </div>
+                <div className="flex flex-1 flex-col gap-2 p-5 text-left">
+                  <h3 className="text-lg font-bold">
+                    {t('home.recommendations.storeFallback', {
+                      defaultValue: 'Store #{{id}}',
+                      id: item.recommendStatNum,
+                    })}
+                  </h3>
+                  <button
+                    onClick={goToRestaurant}
+                    className="mt-3 self-start rounded-lg border border-neutral-200 bg-white px-5 py-2 text-sm font-semibold text-neutral-700 transition-colors hover:border-resy-red hover:bg-resy-red hover:text-white"
+                  >
+                    {t('common.viewAvailability')}
+                  </button>
+                </div>
+              </article>
+            ))}
+          </div>
+        </section>
+      )}
 
       <button
         type="button"

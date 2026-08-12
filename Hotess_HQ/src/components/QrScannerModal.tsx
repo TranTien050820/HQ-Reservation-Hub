@@ -57,12 +57,12 @@ export function QrScannerModal({ open, onClose, onScan }: QrScannerModalProps) {
   if (!open) return null;
 
   return (
-    <div className="modal-backdrop fixed inset-0 z-[9997] flex items-center justify-center bg-black/70 p-4">
+    <div className="modal-backdrop fixed inset-0 z-[9997] flex items-center justify-center p-4">
       <div className="glass-card modal-panel w-full max-w-sm p-6">
-        <h3 className="mb-1 text-lg font-semibold text-white">{t('qr.title')}</h3>
-        <p className="mb-4 text-sm text-slate-400">{t('qr.hint')}</p>
-        <div id={REGION_ID} className="overflow-hidden rounded-xl border-2 border-[#ef4444]/40 bg-black" />
-        {error && <p className="mt-3 text-sm text-red-400">{error}</p>}
+        <h3 className="mb-1 text-lg font-semibold text-ink">{t('qr.title')}</h3>
+        <p className="mb-4 text-sm text-muted">{t('qr.hint')}</p>
+        <div id={REGION_ID} className="overflow-hidden rounded-xl border-2 border-brand/40 bg-black" />
+        {error && <p className="mt-3 text-sm text-bad">{error}</p>}
         <button
           onClick={onClose}
           className="touch-btn btn-secondary mt-4 w-full rounded-xl font-medium"

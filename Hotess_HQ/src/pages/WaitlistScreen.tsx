@@ -9,10 +9,12 @@ import { ConfirmDialog } from '../components/ConfirmDialog';
 import { WaitlistCard } from '../components/WaitlistCard';
 import { WaitlistFormModal, type WaitlistFormValues } from '../components/WaitlistFormModal';
 import { WaitlistSeatModal } from '../components/WaitlistSeatModal';
+import { AlertIcon, ArrowLeftIcon, ChevronRightIcon, ClockIcon, PlusIcon, RefreshIcon, StarIcon } from '../components/icons';
 import { createWaitlist, fetchAllWaitlists, updateWaitlist } from '../api/waitlists';
 import { fetchReservationNosByStatus, searchBookings } from '../api/bookings';
-import { todayStr } from '../utils/date';
-import { compareQueue, elapsedMinutes, toTimeSpan } from '../utils/waitlist';
+import { apiErrorMessage } from '../utils/apiError';
+import { formatVnDate, todayStr } from '../utils/date';
+import { compareQueue, elapsedMinutes, isVip, toTimeSpan } from '../utils/waitlist';
 import { BookingStatus, WaitlistStatus, type ReservationWaitlist } from '../types';
 
 type TabKey = 'all' | 'waiting' | 'confirmed' | 'reserved';
@@ -34,9 +36,18 @@ const QUEUE_STATUSES: number[] = [WaitlistStatus.Waiting, WaitlistStatus.Confirm
  * Reserved(2) only means a table is held for the guest — they are still the
  * hostess's problem until something happens to the *booking*, not to the
  * waitlist row: Seated(6) when they sit down, Close(8) when their table is
- * closed out. Either way they are done with this screen.
+ * closed out, or the backend's housekeeping closing (9) / releasing (10) it on
+ * its own. Any of them and they are done with this screen.
+ *
+ * Cancel(3)/NoShow(7) are deliberately absent: those transitions move the
+ * waitlist row itself, which this screen already filters on.
  */
-const LEFT_QUEUE_BOOKING_STATUSES: number[] = [BookingStatus.Seated, BookingStatus.Close];
+const LEFT_QUEUE_BOOKING_STATUSES: number[] = [
+  BookingStatus.Seated,
+  BookingStatus.Close,
+  BookingStatus.AutoClose,
+  BookingStatus.AutoCancel,
+];
 
 /** Rows rendered at once. A thousand cards would stall a tablet long before it helps anyone. */
 const PAGE_SIZE = 20;
@@ -61,7 +72,7 @@ interface BookingPrefill {
 }
 
 export function WaitlistScreen() {
-  const { t } = useTranslation();
+  const { t, i18n } = useTranslation();
   const navigate = useNavigate();
   const location = useLocation();
   const toast = useToast();
@@ -74,6 +85,8 @@ export function WaitlistScreen() {
   const [truncated, setTruncated] = useState(false);
   const [loading, setLoading] = useState(true);
   const [tab, setTab] = useState<TabKey>('waiting');
+  /** Narrows whichever tab is open to priority guests — a filter, not a fifth tab. */
+  const [vipOnly, setVipOnly] = useState(false);
   const [search, setSearch] = useState('');
   const [page, setPage] = useState(1);
   const [now, setNow] = useState(() => Date.now());
@@ -129,8 +142,8 @@ export function WaitlistScreen() {
       setEntries(rows.filter((e) => !e.reservationNo || !settled.reservationNos.has(String(e.reservationNo))));
       setTruncated(statusPages.some((p) => p.truncated) || settled.truncated);
       setNow(Date.now());
-    } catch {
-      toast.error(t('common.error'));
+    } catch (err) {
+      toast.error(apiErrorMessage(err, t('common.error')));
     } finally {
       setLoading(false);
     }
@@ -156,8 +169,10 @@ export function WaitlistScreen() {
       });
       toast.success(t(successKey, { name: entry.guestName }));
       await load();
-    } catch {
-      toast.error(t('common.error'));
+    } catch (err) {
+      // These PUTs fail for concrete reasons (a required field the DTO lets through as
+      // null, an entry someone else already moved) — show the backend's own words.
+      toast.error(apiErrorMessage(err, t('common.error')));
     } finally {
       setBusyId(null);
     }
@@ -204,8 +219,8 @@ export function WaitlistScreen() {
       setEditEntry(null);
       setPrefill(null);
       await load();
-    } catch {
-      toast.error(t(editEntry ? 'common.error' : 'waitlist.error'));
+    } catch (err) {
+      toast.error(apiErrorMessage(err, t(editEntry ? 'common.error' : 'waitlist.error')));
     } finally {
       setSubmitting(false);
     }
@@ -233,8 +248,8 @@ export function WaitlistScreen() {
         return;
       }
       navigate('../seating', { state: { booking } });
-    } catch {
-      toast.error(t('common.error'));
+    } catch (err) {
+      toast.error(apiErrorMessage(err, t('common.error')));
     } finally {
       setBusyId(null);
     }
@@ -250,10 +265,16 @@ export function WaitlistScreen() {
     };
   }, [entries]);
 
+  const inTab = useCallback(
+    (e: ReservationWaitlist) => (tab === 'all' ? true : TAB_STATUSES[tab].includes(e.status)),
+    [tab],
+  );
+
   const visible = useMemo(() => {
     const term = search.trim().toLowerCase();
     return entries
-      .filter((e) => (tab === 'all' ? true : TAB_STATUSES[tab].includes(e.status)))
+      .filter(inTab)
+      .filter((e) => !vipOnly || isVip(e))
       .filter(
         (e) =>
           !term ||
@@ -262,12 +283,15 @@ export function WaitlistScreen() {
           e.waitlistNo?.toLowerCase().includes(term),
       )
       .sort((a, b) => (STATUS_GROUP[a.status] ?? 3) - (STATUS_GROUP[b.status] ?? 3) || compareQueue(a, b));
-  }, [entries, tab, search]);
+  }, [entries, inTab, vipOnly, search]);
+
+  /** VIPs under the current tab — what the filter would leave, so the chip never promises rows it can't show. */
+  const vipInTab = useMemo(() => entries.filter((e) => inTab(e) && isVip(e)).length, [entries, inTab]);
 
   // Changing what you're looking at should start you at the top of it.
   useEffect(() => {
     setPage(1);
-  }, [tab, search]);
+  }, [tab, search, vipOnly]);
 
   const totalPages = Math.max(1, Math.ceil(visible.length / PAGE_SIZE));
   // A refresh can shrink the list under the current page — clamp on read rather
@@ -317,32 +341,32 @@ export function WaitlistScreen() {
   ];
 
   const statTiles = [
-    { label: t('waitlist.waitingCount'), value: String(stats.waiting), tone: 'text-white' },
-    { label: t('waitlist.avgWait'), value: `${stats.avg} ${t('waitlist.minutes')}`, tone: 'text-white' },
-    { label: t('waitlist.longestWait'), value: `${stats.longest} ${t('waitlist.minutes')}`, tone: stats.longest > 20 ? 'text-red-400' : 'text-white' },
-    { label: t('waitlist.vipWaiting'), value: String(stats.vip), tone: stats.vip > 0 ? 'text-[#ffd700]' : 'text-white' },
-    { label: t('waitlist.tabConfirmed'), value: String(stats.confirmed), tone: 'text-sky-300' },
+    { label: t('waitlist.waitingCount'), value: String(stats.waiting), tone: 'text-ink' },
+    { label: t('waitlist.avgWait'), value: `${stats.avg} ${t('waitlist.minutes')}`, tone: 'text-ink' },
+    { label: t('waitlist.longestWait'), value: `${stats.longest} ${t('waitlist.minutes')}`, tone: stats.longest > 20 ? 'text-bad' : 'text-ink' },
+    { label: t('waitlist.vipWaiting'), value: String(stats.vip), tone: stats.vip > 0 ? 'text-gold' : 'text-ink' },
+    { label: t('waitlist.tabConfirmed'), value: String(stats.confirmed), tone: 'text-info' },
   ];
 
   return (
-    <div className="mx-auto max-w-5xl space-y-4">
-      <div className="flex flex-wrap items-center gap-3">
+    <div className="mx-auto w-full max-w-5xl space-y-2.5">
+      <div className="flex flex-wrap items-center gap-2">
         <button
           onClick={() => navigate('../checkin')}
           aria-label={t('common.back')}
-          className="chip-btn btn-secondary flex h-11 w-11 shrink-0 items-center justify-center rounded-full text-base"
+          className="chip-btn btn-secondary flex h-9 w-9 shrink-0 items-center justify-center rounded-full"
         >
-          ←
+          <ArrowLeftIcon size={17} />
         </button>
-        <h1 className="text-xl font-bold text-white">{t('waitlist.title')}</h1>
-        <span className="text-sm text-slate-400">{new Date().toLocaleDateString()}</span>
+        <h1 className="text-lg font-bold text-ink">{t('waitlist.title')}</h1>
+        <span className="text-xs text-muted">{formatVnDate(i18n.language === 'vi' ? 'vi-VN' : 'en-US')}</span>
         <div className="ml-auto flex gap-2">
           <button
             onClick={load}
             aria-label={t('common.retry')}
-            className="chip-btn btn-secondary flex h-11 w-11 items-center justify-center rounded-full text-base"
+            className="chip-btn btn-secondary flex h-9 w-9 items-center justify-center rounded-full"
           >
-            ⟳
+            <RefreshIcon size={17} />
           </button>
           <button
             onClick={() => {
@@ -350,66 +374,103 @@ export function WaitlistScreen() {
               setPrefill(null);
               setFormOpen(true);
             }}
-            className="chip-btn btn-primary rounded-full px-5 text-sm font-semibold"
+            className="chip-btn btn-primary flex items-center gap-1.5 rounded-full px-5 text-sm font-semibold"
           >
-            + {t('waitlist.addGuest')}
+            <PlusIcon size={16} />
+            {t('waitlist.addGuest')}
           </button>
         </div>
       </div>
 
-      <div className="grid grid-cols-2 gap-2 sm:grid-cols-3 lg:grid-cols-5">
+      <div className="grid grid-cols-3 gap-1.5 sm:grid-cols-5">
         {statTiles.map((s) => (
           <div key={s.label} className="stat-tile text-center">
-            <p className="text-xs uppercase tracking-wide text-slate-400">{s.label}</p>
-            <p className={`text-lg font-bold ${s.tone}`}>{s.value}</p>
+            <p className="text-[10px] uppercase tracking-wide text-muted">{s.label}</p>
+            <p className={`text-base font-bold ${s.tone}`}>{s.value}</p>
           </div>
         ))}
       </div>
 
-      <div className="glass-card p-4">
+      <div className="glass-card p-3">
         <input
           value={search}
           onChange={(e) => setSearch(e.target.value)}
           placeholder={t('waitlist.searchPlaceholder')}
-          className="field touch-btn mb-3 px-4"
+          className="field chip-btn mb-2 px-4"
         />
 
-        <div className="mb-4 flex gap-2 overflow-x-auto pb-1">
+        <div className="mb-2 flex gap-1.5 overflow-x-auto pb-1">
           {tabs.map((tb) => (
             <button
               key={tb.key}
               onClick={() => setTab(tb.key)}
               className={`chip-btn flex items-center gap-1.5 whitespace-nowrap rounded-full px-4 text-sm font-medium ${
-                tab === tb.key
-                  ? 'bg-gradient-to-br from-[#ef4444] to-[#dc2626] text-white shadow-[0_4px_16px_rgba(239,68,68,0.35)]'
-                  : 'bg-slate-800/50 text-slate-300 hover:bg-slate-700/50'
+                tab === tb.key ? 'pill-on' : 'pill'
               }`}
             >
               {tb.label}
               <span
                 className={`flex h-5 min-w-5 items-center justify-center rounded-full px-1 text-[11px] ${
-                  tab === tb.key ? 'bg-white/20' : 'bg-black/30'
+                  tab === tb.key ? 'bg-white/25' : 'bg-[var(--surface-hover)]'
                 }`}
               >
                 {tb.count}
               </span>
             </button>
           ))}
+          {/* Sits with the tabs but toggles independently: it narrows whichever
+              tab is open rather than replacing the status the hostess picked. */}
+          <button
+            onClick={() => setVipOnly((v) => !v)}
+            aria-pressed={vipOnly}
+            className={`chip-btn ml-auto flex shrink-0 items-center gap-1.5 whitespace-nowrap rounded-full px-4 text-sm font-medium ${
+              vipOnly
+                ? 'bg-[var(--gold)] text-[var(--gold-fg)] shadow-[0_4px_14px_rgba(234,179,8,0.3)]'
+                : 'pill text-gold'
+            }`}
+          >
+            <StarIcon size={14} />
+            {t('waitlist.vipOnly')}
+            <span
+              className={`flex h-5 min-w-5 items-center justify-center rounded-full px-1 text-[11px] ${
+                vipOnly ? 'bg-black/15' : 'bg-[var(--surface-hover)]'
+              }`}
+            >
+              {vipInTab}
+            </span>
+          </button>
         </div>
 
         {truncated && (
-          <p className="mb-3 rounded-xl border border-amber-500/30 bg-amber-950/20 px-3 py-2 text-xs text-amber-300">
-            ⚠ {t('waitlist.truncated')}
+          <p className="note note-warn mb-2 flex items-start gap-1.5">
+            <AlertIcon size={14} className="mt-px shrink-0" />
+            {t('waitlist.truncated')}
           </p>
         )}
 
         {loading ? (
           <Spinner label={t('common.loading')} />
         ) : visible.length === 0 ? (
-          <p className="py-10 text-center text-sm text-slate-400">{t('waitlist.empty')}</p>
+          <div className="flex flex-col items-center justify-center gap-3 py-10 text-center">
+            <span className="icon-tile h-12 w-12">
+              <ClockIcon size={22} />
+            </span>
+            <p className="text-sm text-muted">{t('waitlist.empty')}</p>
+            <button
+              onClick={() => {
+                setEditEntry(null);
+                setPrefill(null);
+                setFormOpen(true);
+              }}
+              className="chip-btn btn-secondary flex items-center gap-1.5 rounded-lg px-4 text-sm font-semibold"
+            >
+              <PlusIcon size={15} />
+              {t('waitlist.addGuest')}
+            </button>
+          </div>
         ) : (
           <>
-            <div className="space-y-3">
+            <div className="space-y-2">
               {pageItems.map((entry) => (
                 <WaitlistCard
                   key={entry.globalId}
@@ -431,8 +492,8 @@ export function WaitlistScreen() {
               ))}
             </div>
 
-            <div className="mt-4 flex flex-wrap items-center justify-between gap-3">
-              <p className="text-xs text-slate-400">
+            <div className="mt-3 flex flex-wrap items-center justify-between gap-2">
+              <p className="text-xs text-muted">
                 {t('waitlist.pageRange', {
                   from: pageStart + 1,
                   to: pageStart + pageItems.length,
@@ -445,20 +506,20 @@ export function WaitlistScreen() {
                     onClick={() => stepPage(-1)}
                     disabled={currentPage <= 1}
                     aria-label={t('waitlist.prevPage')}
-                    className="chip-btn btn-secondary rounded-xl px-4 text-sm font-medium"
+                    className="chip-btn btn-secondary flex items-center rounded-lg px-4 text-sm font-medium"
                   >
-                    ‹
+                    <ChevronRightIcon size={16} className="rotate-180" />
                   </button>
-                  <span className="text-xs text-slate-400">
+                  <span className="text-xs text-muted">
                     {currentPage} / {totalPages}
                   </span>
                   <button
                     onClick={() => stepPage(1)}
                     disabled={currentPage >= totalPages}
                     aria-label={t('waitlist.nextPage')}
-                    className="chip-btn btn-secondary rounded-xl px-4 text-sm font-medium"
+                    className="chip-btn btn-secondary flex items-center rounded-lg px-4 text-sm font-medium"
                   >
-                    ›
+                    <ChevronRightIcon size={16} />
                   </button>
                 </div>
               )}
