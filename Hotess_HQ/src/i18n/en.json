@@ -61,7 +61,7 @@
   "checkin.seatedNoTable": "Seated to the zone, no table assigned",
   "checkin.notConfirmedTitle": "Booking not confirmed",
   "checkin.notConfirmedMsg": "Reservation {{code}} for {{name}} is still New and has not been confirmed. Seat this guest anyway?",
-  "checkin.statFreeTables": "Free tables",
+  "checkin.statFreeTables": "Free slots",
   "checkin.statWaiting": "Waiting",
   "checkin.statBookingsToday": "Booked today",
   "checkin.statSeated": "Seated",
@@ -183,8 +183,8 @@
   "waitlist.calledAgo": "Confirmed {{count}} min ago",
   "waitlist.confirm": "Confirm",
   "waitlist.confirmed": "{{name}} confirmed — table held",
-  "waitlist.seat": "Seat",
-  "waitlist.seatTitle": "Seat waiting guest",
+  "waitlist.seat": "Reserve",
+  "waitlist.seatTitle": "Reserve waiting guest",
   "waitlist.seatFrom": "From",
   "waitlist.seated": "Seated at {{tables}}",
   "waitlist.needMoreSeats": "not enough seats, add another table",
@@ -216,7 +216,7 @@
 
   "waitlistStatus.waiting": "Waiting",
   "waitlistStatus.confirmed": "Confirmed",
-  "waitlistStatus.seated": "Seated",
+  "waitlistStatus.seated": "Reserved",
   "waitlistStatus.cancelled": "Cancelled",
   "waitlistStatus.expired": "Expired",
 

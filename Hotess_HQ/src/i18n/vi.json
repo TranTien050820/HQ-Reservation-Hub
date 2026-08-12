@@ -61,7 +61,7 @@
   "checkin.seatedNoTable": "Đã seat theo khu, chưa gán bàn",
   "checkin.notConfirmedTitle": "Booking chưa được confirm",
   "checkin.notConfirmedMsg": "Đặt chỗ {{code}} của {{name}} đang ở trạng thái Mới, chưa được xác nhận. Vẫn tiếp tục xếp chỗ cho khách?",
-  "checkin.statFreeTables": "Bàn trống",
+  "checkin.statFreeTables": "Chỗ trống",
   "checkin.statWaiting": "Đang chờ",
   "checkin.statBookingsToday": "Đặt hôm nay",
   "checkin.statSeated": "Đang ngồi",
