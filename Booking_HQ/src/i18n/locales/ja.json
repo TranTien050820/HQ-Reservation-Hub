@@ -83,9 +83,18 @@
     "howItWorks": {
       "heading": "ご利用方法",
       "steps": [
-        { "title": "検索する", "desc": "日付と人数を入力すると、空席のある店舗を表示します。" },
-        { "title": "時間を選ぶ", "desc": "ご希望の席種と時間帯を選択してください。" },
-        { "title": "予約確定", "desc": "情報を入力するだけで予約完了 — 電話も待ち時間も不要です。" }
+        {
+          "title": "検索する",
+          "desc": "日付と人数を入力すると、空席のある店舗を表示します。"
+        },
+        {
+          "title": "時間を選ぶ",
+          "desc": "ご希望の席種と時間帯を選択してください。"
+        },
+        {
+          "title": "予約確定",
+          "desc": "情報を入力するだけで予約完了 — 電話も待ち時間も不要です。"
+        }
       ]
     },
     "restaurants": {
@@ -258,6 +267,51 @@
     "issueSoldOut": "{{name}} は品切れです",
     "acceptChanges": "注文を更新する",
     "rebuilding": "更新中…",
-    "backToBookings": "予約一覧"
+    "backToBookings": "予約一覧",
+    "couponTitle": "Discount codes",
+    "couponPlaceholder": "Enter discount code",
+    "couponPlaceholderMore": "Add another code",
+    "couponApply": "Apply",
+    "couponRemove": "Remove",
+    "couponPick": "See available codes",
+    "couponNone": "No codes available for this cart yet.",
+    "couponUse": "Use code",
+    "couponApplied": "Applied",
+    "couponReplace": "Use instead",
+    "couponRemoveOneFirst": "Remove a code to use this one",
+    "couponGift": "Gift",
+    "couponShortfall": "Still need",
+    "couponCapped": "Maximum discount for this code reached.",
+    "discount": "Discount",
+    "estimatedTotal": "Estimated after discount",
+    "close": "Close",
+    "priceLockKept": "This offer is held for your reservation.",
+    "priceLockReprice": "This offer will be recalculated when you arrive.",
+    "COUPON_DISABLED": "This restaurant has not enabled discount codes.",
+    "COUPON_NOT_FOUND": "Code is invalid or does not apply to this restaurant.",
+    "COUPON_EXPIRED": "This code has expired.",
+    "COUPON_NOT_IN_SCHEDULE": "This code does not apply at your chosen dining time.",
+    "COUPON_CHANNEL_NOT_ALLOWED": "This code does not apply to pre-orders.",
+    "COUPON_MIN_NOT_MET": "Order has not reached the minimum value.",
+    "COUPON_NO_ELIGIBLE_ITEM": "No item in your cart qualifies for this code.",
+    "COUPON_REQUIRES_ITEM": "A required item must be selected to use this code.",
+    "COUPON_LIMIT_REACHED": "This code has run out of uses.",
+    "COUPON_ALREADY_USED": "You have already used this code.",
+    "COUPON_CONFLICT": "This code cannot be combined with the codes already applied.",
+    "COUPON_MAX_REACHED": "This order already uses the maximum number of codes.",
+    "COUPON_EXCEEDS_TOTAL": "The total discount would exceed the order value.",
+    "COUPON_INVALID": "This code is no longer valid, please review your cart.",
+    "COUPON_MEMBER_REQUIRED": "This code is for members only.",
+    "COUPON_TOO_MANY_ATTEMPTS": "Too many attempts, please try again later.",
+    "promoBuy": "Buy",
+    "promoPay": "pay for",
+    "promoWholeBill": "Whole order",
+    "promoOnly": "Only",
+    "promoMinCost": "Orders from",
+    "promoMinQuan": "Min qty",
+    "promoMemberOnly": "Members only",
+    "promoPinnedHint": "Applied when you add an item",
+    "promoAuto": "Auto discount",
+    "promoAutoHint": "Applied automatically — no code needed"
   }
 }

@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+﻿import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { Link, useLocation, useNavigate, useParams } from 'react-router-dom';
 import { useTranslation } from 'react-i18next';
 import { useStoreData } from '../store/StoreDataContext';
@@ -23,12 +23,18 @@ import {
   type OrderHubMenu,
   type OrderHubMenuProduct,
   type OrderHubSession,
+  applyPromo,
+  removePromo,
+  OrderHubError,
   type SessionOrders,
 } from '../api/orderHub';
 import { loadPreOrderSession, savePreOrderSession } from '../lib/preorderSession';
 import { formatDateHeadingWithYear, formatMoney, formatTime } from '../lib/i18nFormat';
 import { menuItemPhoto } from '../lib/menuImages';
 import PreOrderProductModal from '../components/PreOrderProductModal';
+import { CouponPicker } from '../components/CouponPicker';
+import { ProductPrice, PromoStrip } from '../components/PromoBits';
+import { priceAt } from '../lib/scheduledPrice';
 
 /**
  * Pre-ordering for a reservation (ORDERHUB_API_GUIDE §8.4).
@@ -93,6 +99,18 @@ export default function PreOrderPage() {
   const [placed, setPlaced] = useState<CheckoutResult | null>(null);
   const [modalProduct, setModalProduct] = useState<OrderHubMenuProduct | null>(null);
   const [activeCategory, setActiveCategory] = useState<number | null>(null);
+  const [voucher, setVoucher] = useState('');
+  // Loi ap ma hien ngay canh o nhap: khach vua go xong thi phai thay ly do o cho dang nhin.
+  const [couponError, setCouponError] = useState<string | null>(null);
+  const [couponPickerOpen, setCouponPickerOpen] = useState(false);
+  /**
+   * Ma khach chon o MENU nhung chua ap duoc — gio con rong.
+   *
+   * 🔴 Server khong ap ma len gio rong (no can dong mon de tinh tien giam), ma the mon thi da
+   *    hien gia sau giam. Ghim lai roi tu ap ngay sau khi them mon DAU TIEN la thu bien con so
+   *    tren the thanh su that. Khong co no, khach thay 90.000 o menu roi thay 100.000 o gio.
+   */
+  const [pinnedCode, setPinnedCode] = useState<string | null>(null);
 
   /**
    * One key per "confirm" tap, reused across every retry of that tap and thrown away once
@@ -104,6 +122,22 @@ export default function PreOrderPage() {
   const snapshotRef = useRef<CartSnapshotLine[]>([]);
   /** Language the menu on screen was fetched in, so the language effect skips its first run. */
   const menuLangRef = useRef<string | null>(null);
+
+  /**
+   * Thời điểm khách SẼ ĂN, ghép từ ngày + giờ của booking.
+   *
+   * 🔴 Server resolve `Product.MENUSCHED` theo `DateTime.Now` lúc gọi API rồi mới trả `price`.
+   *    Khách xem lúc 10:00 sáng cho bữa tối 19:00 sẽ thấy **giá bậc của 10:00**, và checkout
+   *    cũng không bắt được (vẫn 10:00) — lệch chỉ lộ ra ở bước Release lúc 19:00, tức là khi
+   *    khách đã ngồi vào bàn. `priceSchedule` là thứ để sửa đúng chỗ đó (§20.4).
+   */
+  const mealTime = useMemo(() => {
+    if (!booking?.reservationDate) return null;
+    const day = booking.reservationDate.slice(0, 10);
+    const time = (booking.reservationTime ?? '00:00:00').slice(0, 8);
+    const when = new Date(`${day}T${time}`);
+    return Number.isNaN(when.getTime()) ? null : when;
+  }, [booking?.reservationDate, booking?.reservationTime]);
 
   const token = session?.sessionToken ?? '';
   const currency = session?.site.currency || 'VND';
@@ -213,6 +247,18 @@ export default function PreOrderPage() {
   const applyCart = (next: OrderHubCart) => {
     setCart(next);
     idempotencyKeyRef.current = null;
+
+    // 🔴 `couponWarnings` KHONG phai loi: server tra 200 kem gio da tinh lai sau khi TU GO ma
+    //    het dieu kien. Nhung im lang thi khach sua gio xong mat ma ma khong biet, va chi phat
+    //    hien luc den quan. Mot dong cho MOI ma da rung — dung ba ma ma chi nghe "ma cua ban
+    //    het hieu luc" thi khong biet ma nao vua mat.
+    if (next.couponWarnings?.length) {
+      setCouponError(
+        next.couponWarnings
+          .map((w) => `${w.code}: ${w.message || t(`preorder.${w.reason}`)}`)
+          .join(' · '),
+      );
+    }
   };
 
   const runCartAction = async (action: () => Promise<OrderHubCart>) => {
@@ -227,16 +273,119 @@ export default function PreOrderPage() {
     }
   };
 
+  /**
+   * Ap ma — hoac GO ma bang chuoi rong.
+   *
+   * 🔴 Khong dung `runCartAction`: ham do do loi vao `actionError` chung o cuoi gio. Loi ap ma
+   *    phai nam canh o nhap, va con phai phan biet duoc theo MA MAY (`COUPON_NOT_IN_SCHEDULE`
+   *    la ly do hay gap nhat o kenh dat truoc — coupon chi chay mot khung gio, va backend kiem
+   *    theo GIO AN chu khong phai gio khach dang xem).
+   */
+  const submitCoupon = async (code: string) => {
+    setBusy(true);
+    setCouponError(null);
+    try {
+      applyCart(await applyPromo(token, code));
+      setVoucher('');
+      setCouponPickerOpen(false);
+    } catch (err) {
+      if (err instanceof OrderHubError && err.couponCode) {
+        const shortfall = err.couponShortfall;
+        setCouponError(
+          err.couponCode === 'COUPON_MIN_NOT_MET' && shortfall
+            ? `${t('preorder.COUPON_MIN_NOT_MET')} ${t('preorder.couponShortfall')} ${formatMoney(shortfall, i18n.language, currency)}.`
+            : t(`preorder.${err.couponCode}`),
+        );
+      } else {
+        setCouponError(err instanceof Error ? err.message : t('preorder.cartError'));
+      }
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  /**
+   * Go DUNG MOT ma, giu nhung ma con lai (V2 — mot don mang duoc nhieu ma).
+   *
+   * Khong bao gio bao loi len giao dien: go ma ma that bai thi gio ket — khach khong go duoc
+   * ma, cung khong sua duoc gio.
+   */
+  const removeCoupon = async (code: string) => {
+    setBusy(true);
+    setCouponError(null);
+    try {
+      applyCart(await removePromo(token, code));
+    } catch {
+      /* im lang: lan tai gio ke tiep se dong bo lai */
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  /**
+   * Doi ma: go ma cu roi ap ma moi.
+   *
+   * Tu V2 `applyPromo` CONG THEM chu khong thay, nen "dung thay cho X" phai la hai lenh — va
+   * thu tu bat buoc la go truoc, neu khong ma moi bi tu choi bang COUPON_MAX_REACHED hoac
+   * COUPON_CONFLICT.
+   */
+  const replaceCoupon = async (remove: string, add: string) => {
+    setBusy(true);
+    setCouponError(null);
+    try {
+      await removePromo(token, remove);
+      applyCart(await applyPromo(token, add));
+      setVoucher('');
+      setCouponPickerOpen(false);
+    } catch (err) {
+      if (err instanceof OrderHubError && err.couponCode) {
+        setCouponError(t(`preorder.${err.couponCode}`));
+      } else {
+        setCouponError(err instanceof Error ? err.message : t('preorder.cartError'));
+      }
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  /**
+   * Them mon, roi AP NGAY ma dang ghim neu co.
+   *
+   * Day la cho bien gia tren THE MON thanh su that: menu hien "100.000 -> 90.000 voi GIAM10",
+   * khach bam chip => ma duoc ghim, va gio vua co mon dau tien la ap. Bo buoc nay thi the mon
+   * hua 90.000 con gio tinh 100.000 — te hon han viec khong hien gi.
+   */
+  const addThenApplyPinned = async (item: AddCartItemRequest) => {
+    const cart = await addCartItem(token, item);
+    if (!pinnedCode || cart.coupons?.some((c) => c.code === pinnedCode)) return cart;
+
+    try {
+      return await applyPromo(token, pinnedCode);
+    } catch (err) {
+      // Ma ghim khong ap duoc (het han giua chung, chua dat don toi thieu, can dang nhap…):
+      // KHONG duoc lam hong thao tac them mon. Noi ly do roi bo ghim — giu lai la moi lan them
+      // mon tiep theo lai that bai y het.
+      setCouponError(
+        err instanceof OrderHubError && err.couponCode
+          ? t(`preorder.${err.couponCode}`)
+          : t('preorder.cartError'),
+      );
+      return cart;
+    } finally {
+      setPinnedCode(null);
+    }
+  };
+
   const addProduct = (product: OrderHubMenuProduct) => {
     if (product.hasModifiers) {
       setModalProduct(product);
       return;
     }
-    void runCartAction(() => addCartItem(token, { prodNum: product.prodNum, qty: 1 }));
+    void runCartAction(() => addThenApplyPinned({ prodNum: product.prodNum, qty: 1 }));
   };
 
   const addFromModal = async (item: AddCartItemRequest) => {
-    await runCartAction(() => addCartItem(token, item));
+    await runCartAction(() => addThenApplyPinned(item));
     setModalProduct(null);
   };
 
@@ -391,9 +540,30 @@ export default function PreOrderPage() {
           </p>
           {/* Server-authored copy: business rules can change without redeploying this app. */}
           <p className="mt-1 text-sm text-green-700">{placed.messageForCustomer}</p>
+          {/* Coupon da chot vao don — khach phai thay no o buoc xac nhan, khong chi o gio.
+              Day cung la bang chung de doi chieu khi den quan neu bill khong khop. */}
+          {/* Moi ma mot dong: mot don mang duoc nhieu ma (V2 §10.8), va day la bang chung
+              khach doi chieu khi den quan neu bill khong khop. Gop lai mot dong tong thi ho
+              khong con gi de doi chieu. */}
+          {placed.coupons?.map((c) => (
+            <p key={c.promoNum} className="mt-2 text-sm text-green-800">
+              <span className="font-mono font-semibold">{c.code}</span>
+              {' · '}
+              {c.title}
+              {' · '}
+              <strong>−{formatMoney(c.discountAmount, i18n.language, currency)}</strong>
+            </p>
+          ))}
           <p className="mt-2 text-sm text-green-800">
             {t('preorder.total')}: <strong>{formatMoney(placed.grandTotal, i18n.language, currency)}</strong>
           </p>
+          {(placed.coupons?.length ?? 0) > 0 && (
+            <p className="mt-1 text-xs text-green-700">
+              {session?.site.priceLockMode === 'REPRICE_AT_RELEASE'
+                ? t('preorder.priceLockReprice')
+                : t('preorder.priceLockKept')}
+            </p>
+          )}
           {placed.requiresPayment && (
             <p className="mt-2 rounded-lg bg-amber-100 px-3 py-2 text-xs text-amber-800">
               {t('preorder.paymentPending')}
@@ -472,6 +642,16 @@ export default function PreOrderPage() {
               </nav>
             )}
 
+            {/* Uu dai dang chay — TRUOC luoi mon. Truoc day coupon chi nam trong khoi gio ben
+                phai, tuc la khach phai them mon roi moi biet cua hang dang giam gia. */}
+            <PromoStrip
+              promotions={menu?.promotions ?? []}
+              currency={currency}
+              lang={i18n.language}
+              pinnedCode={pinnedCode}
+              onPin={setPinnedCode}
+            />
+
             <div className="grid gap-4 sm:grid-cols-2">
               {(shownCategory?.products ?? []).map((product) => (
                 <article
@@ -489,8 +669,13 @@ export default function PreOrderPage() {
                     {product.description && (
                       <p className="line-clamp-2 text-sm text-neutral-500">{product.description}</p>
                     )}
-                    <div className="mt-auto flex items-center justify-between gap-2 pt-2">
-                      <span className="font-semibold">{formatMoney(product.price, i18n.language, currency)}</span>
+                    <div className="mt-auto flex items-end justify-between gap-2 pt-2">
+                      <ProductPrice
+                        base={priceAt(product.priceSchedule, mealTime, product.price)}
+                        promo={product.promo ?? null}
+                        currency={currency}
+                        lang={i18n.language}
+                      />
                       <button
                         onClick={() => addProduct(product)}
                         disabled={busy || cartLocked}
@@ -563,11 +748,108 @@ export default function PreOrderPage() {
                 </ul>
               )}
 
+              {/* ── Ma giam gia ── */}
+              {session?.site.couponEnabled !== false && (cart?.items.length ?? 0) > 0 && (
+                <div className="mt-4 border-t border-neutral-100 pt-4">
+                  {/* Moi ma mot dong, moi dong go rieng. O nhap KHONG bien mat sau ma dau
+                      tien: cua hang co the cho chong them ma, va client khong tu doan tran —
+                      server tra COUPON_MAX_REACHED la du (V2 §10.8). */}
+                  {(cart?.coupons?.length ?? 0) > 0 && (
+                    <ul className="mb-2 space-y-1.5">
+                      {cart!.coupons.map((c) => (
+                        <li key={c.promoNum} className="rounded-xl border border-emerald-200 bg-emerald-50 px-3 py-2.5">
+                          <div className="flex items-start gap-2">
+                            <div className="min-w-0 flex-1">
+                              <div className="flex items-baseline gap-2">
+                                <span className="font-mono text-sm font-bold">{c.code}</span>
+                                <span className="truncate text-xs text-neutral-500">{c.title}</span>
+                              </div>
+                              {c.kind === 'X_FOR_Y' && (c.freeUnits ?? 0) > 0 && (
+                                <p className="mt-1 text-xs text-emerald-700">
+                                  🎁 {t('preorder.couponGift')} ×{c.freeUnits}
+                                </p>
+                              )}
+                              {c.cappedByMax && (
+                                <p className="mt-1 text-xs text-amber-600">{t('preorder.couponCapped')}</p>
+                              )}
+                            </div>
+                            <span className="shrink-0 text-sm font-bold text-emerald-600">
+                              −{formatMoney(c.discountAmount, i18n.language, currency)}
+                            </span>
+                            <button
+                              onClick={() => void removeCoupon(c.code)}
+                              disabled={busy || cartLocked}
+                              className="shrink-0 text-xs text-neutral-400 hover:text-resy-red disabled:opacity-50"
+                            >
+                              {t('preorder.couponRemove')}
+                            </button>
+                          </div>
+                        </li>
+                      ))}
+                    </ul>
+                  )}
+
+                  <div className="flex gap-2">
+                    <input
+                      value={voucher}
+                      onChange={(e) => { setVoucher(e.target.value.toUpperCase().replace(/\s/g, '')); setCouponError(null); }}
+                      placeholder={
+                        (cart?.coupons?.length ?? 0) > 0
+                          ? t('preorder.couponPlaceholderMore')
+                          : t('preorder.couponPlaceholder')
+                      }
+                      maxLength={40}
+                      className="h-10 flex-1 rounded-xl border border-neutral-200 px-3 font-mono text-sm uppercase outline-none placeholder:font-sans placeholder:normal-case focus:border-neutral-400"
+                    />
+                    <button
+                      onClick={() => void submitCoupon(voucher.trim())}
+                      disabled={busy || cartLocked || !voucher.trim()}
+                      className="shrink-0 rounded-xl border border-neutral-300 px-4 text-sm font-semibold disabled:opacity-50"
+                    >
+                      {t('preorder.couponApply')}
+                    </button>
+                  </div>
+                  {couponError && <p className="mt-1.5 text-xs text-resy-red">{couponError}</p>}
+                  <button
+                    onClick={() => setCouponPickerOpen(true)}
+                    className="mt-2 text-xs font-medium text-resy-red hover:underline"
+                  >
+                    {t('preorder.couponPick')}
+                  </button>
+                </div>
+              )}
+
               <div className="mt-4 border-t border-neutral-100 pt-4">
                 <div className="flex justify-between text-sm">
                   <span className="text-neutral-500">{t('preorder.subtotal')}</span>
                   <span className="font-semibold">{formatMoney(cart?.subtotal, i18n.language, currency)}</span>
                 </div>
+
+                {(cart?.discountAmount ?? 0) > 0 && (
+                  <>
+                    <div className="mt-1 flex justify-between text-sm">
+                      <span className="text-neutral-500">{t('preorder.discount')}</span>
+                      <span className="font-semibold text-emerald-600">
+                        −{formatMoney(cart?.discountAmount, i18n.language, currency)}
+                      </span>
+                    </div>
+                    <div className="mt-1 flex justify-between text-sm">
+                      <span className="text-neutral-500">{t('preorder.estimatedTotal')}</span>
+                      <span className="font-semibold">
+                        {formatMoney(Math.max(0, (cart?.subtotal ?? 0) - (cart?.discountAmount ?? 0)), i18n.language, currency)}
+                      </span>
+                    </div>
+
+                    {/* 🔴 Bat buoc noi ra. Bo dong nay la khieu nai: dat thay giam 200.000, den
+                        noi bill khong giam. */}
+                    <p className="mt-2 text-xs text-amber-600">
+                      {session?.site.priceLockMode === 'REPRICE_AT_RELEASE'
+                        ? t('preorder.priceLockReprice')
+                        : t('preorder.priceLockKept')}
+                    </p>
+                  </>
+                )}
+
                 {/* Tax and service fee are computed at Checkout, never in the cart (§3.6). */}
                 <p className="mt-1 text-xs text-neutral-400">{t('preorder.taxNote')}</p>
               </div>
@@ -635,9 +917,28 @@ export default function PreOrderPage() {
             className="flex w-full items-center justify-between rounded-xl bg-resy-red px-5 py-3 text-sm font-semibold text-white disabled:opacity-60"
           >
             <span>{t('preorder.confirmWithCount', { count: itemCount })}</span>
-            <span>{formatMoney(cart?.subtotal, i18n.language, currency)}</span>
+            <span>
+              {formatMoney(
+                Math.max(0, (cart?.subtotal ?? 0) - (cart?.discountAmount ?? 0)),
+                i18n.language,
+                currency,
+              )}
+            </span>
           </button>
         </div>
+      )}
+
+      {couponPickerOpen && (
+        <CouponPicker
+          token={token}
+          currency={currency}
+          // Tien giam uoc tinh phu thuoc gio ⇒ gio doi la phai hoi lai.
+          cartSignature={`${cart?.itemCount ?? 0}:${cart?.subtotal ?? 0}`}
+          applied={cart?.coupons ?? []}
+          onReplace={(remove, add) => void replaceCoupon(remove, add)}
+          onPick={(code) => void submitCoupon(code)}
+          onClose={() => setCouponPickerOpen(false)}
+        />
       )}
 
       {modalProduct && (
@@ -647,6 +948,7 @@ export default function PreOrderPage() {
           product={modalProduct}
           currency={currency}
           busy={busy}
+          mealTime={mealTime}
           onClose={() => setModalProduct(null)}
           onAdd={addFromModal}
         />

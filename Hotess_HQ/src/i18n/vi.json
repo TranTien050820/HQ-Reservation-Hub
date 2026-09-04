@@ -18,6 +18,10 @@
   "common.durationMinutes": "{{minutes}} phút",
   "common.durationHoursMinutes": "{{hours}} giờ {{minutes}} phút",
 
+  "toast.successTitle": "Thành công",
+  "toast.errorTitle": "Lỗi",
+  "toast.infoTitle": "Thông báo",
+
   "login.title": "Đăng nhập",
   "login.username": "Tên đăng nhập",
   "login.password": "Mật khẩu",

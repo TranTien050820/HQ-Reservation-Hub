@@ -117,9 +117,13 @@
 :root[data-theme="dark"] {
   color-scheme: dark;
 
-  /* A plain neutral dark. The old indigo/violet cast tinted every neutral
-     surface on top of it, which is why cards read as purple rather than grey. */
-  --app-bg: linear-gradient(180deg, #0e1013 0%, #15181e 100%);
+  /* A soft blue-grey rather than near-black: at #0e1013 every card edge and
+     divider hit the page at full contrast, which read as harsh. Flat, not a
+     gradient — the band this hue needs is between page and card, not top to
+     bottom of the page. --bar and --panel are cut from the same hue so the
+     header and modals stay part of the surface stack instead of reading as
+     darker slabs dropped on top. */
+  --app-bg: #1e2434;
 
   --ink: #ffffff;
   --muted: #b6bece;
@@ -130,13 +134,13 @@
   --card-shadow: 0 1px 2px rgba(0, 0, 0, 0.2), 0 10px 30px rgba(0, 0, 0, 0.3);
   --card-shadow-lift: 0 2px 4px rgba(0, 0, 0, 0.25), 0 18px 44px rgba(0, 0, 0, 0.45);
 
-  --bar: rgba(18, 21, 26, 0.8);
+  --bar: rgba(36, 43, 61, 0.8);
   --bar-line: rgba(255, 255, 255, 0.09);
   --bar-shadow: 0 1px 3px rgba(0, 0, 0, 0.3);
   --logo: url('/media/logo-dark.png');
   --select-arrow: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='24' height='24' viewBox='0 0 24 24' fill='none' stroke='%23b6bece' stroke-width='2' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='m6 9 6 6 6-6'/%3E%3C/svg%3E");
   --sunken-shadow: inset 0 1px 2px rgba(0, 0, 0, 0.25);
-  --panel: #1a1d23;
+  --panel: #252c3f;
   --panel-shadow: 0 24px 60px rgba(0, 0, 0, 0.6);
   --scrim: rgba(0, 0, 0, 0.7);
 
@@ -722,6 +726,45 @@
      underneath show through wherever backdrop-filter is unsupported/disabled. */
   background: var(--panel);
   box-shadow: var(--panel-shadow);
+}
+
+/* ---------------------------------------------------------------------------
+   Centre-screen alerts (success / error / info)
+   ---------------------------------------------------------------------------
+   Own scrim rather than --scrim: a modal's job is to stop the screen behind it
+   being used, while these are transient and get tapped straight through, so the
+   veil only has to lift the message off the floor plan — at modal strength every
+   "Đã xếp bàn" would black the restaurant out for two seconds.
+   --------------------------------------------------------------------------- */
+.alert-scrim {
+  background: rgba(16, 24, 40, 0.32);
+  backdrop-filter: blur(2px);
+  -webkit-backdrop-filter: blur(2px);
+  animation: fadeIn 0.15s ease-out;
+}
+
+:root[data-theme="dark"] .alert-scrim {
+  background: rgba(0, 0, 0, 0.5);
+}
+
+.alert-panel {
+  border-radius: 1.25rem;
+  background: var(--panel);
+  border: 1px solid var(--line);
+  box-shadow: var(--panel-shadow);
+  animation: popIn 0.22s cubic-bezier(0.34, 1.56, 0.64, 1);
+}
+
+/* ---------------------------------------------------------------------------
+   Sticky action bar — the seat/submit row at the foot of a screen whose body
+   scrolls. Pinned to the bottom of the viewport so the action is never at the
+   end of a floor plan that runs to hundreds of tables.
+   --------------------------------------------------------------------------- */
+.action-bar {
+  border-radius: 0.9rem;
+  background: var(--panel);
+  border: 1px solid var(--line);
+  box-shadow: var(--card-shadow-lift);
 }
 
 /* ---------------------------------------------------------------------------

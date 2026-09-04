@@ -9,11 +9,14 @@ import {
 } from '../api/orderHub';
 import { formatMoney } from '../lib/i18nFormat';
 import { menuItemPhoto } from '../lib/menuImages';
+import { priceAt } from '../lib/scheduledPrice';
 
 interface PreOrderProductModalProps {
   token: string;
   product: OrderHubMenuProduct;
   currency: string;
+  /** Thời điểm khách sẽ ăn — quyết định bậc giá theo lịch. null = dùng giá server trả. */
+  mealTime: Date | null;
   busy: boolean;
   onClose: () => void;
   onAdd: (item: AddCartItemRequest) => void;
@@ -30,6 +33,7 @@ export default function PreOrderProductModal({
   product,
   currency,
   busy,
+  mealTime,
   onClose,
   onAdd,
 }: PreOrderProductModalProps) {
@@ -93,7 +97,10 @@ export default function PreOrderProductModal({
   }, [detail, selections]);
 
   const unitPrice = useMemo(() => {
-    const base = detail?.price ?? product.price ?? 0;
+    // Giá tại GIỜ ĂN, không phải giờ đang xem — cùng con số mà danh sách món đang hiện.
+    // Hai chỗ lệch nhau thì khách thấy giá này ở lưới và giá khác khi mở món ra.
+    const raw = detail?.price ?? product.price ?? 0;
+    const base = priceAt(detail?.priceSchedule ?? product.priceSchedule, mealTime, raw);
     let extra = 0;
     for (const group of detail?.modifierGroups ?? []) {
       for (const choice of group.choices ?? []) {
@@ -101,7 +108,7 @@ export default function PreOrderProductModal({
       }
     }
     return base + extra;
-  }, [detail, product.price, selections]);
+  }, [detail, product.price, product.priceSchedule, mealTime, selections]);
 
   const submit = () => {
     const modifiers: ModifierSelection[] = Object.entries(selections).flatMap(([optionIndex, choices]) =>

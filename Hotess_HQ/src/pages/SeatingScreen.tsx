@@ -326,34 +326,54 @@ export function SeatingScreen() {
     setSelectedZoneID((prev) => prev ?? firstZoneWithTables);
   }, [activeBooking?.zoneID, firstZoneWithTables]);
 
+  /**
+   * The zone whose opening load has already run.
+   *
+   * Opening a zone blanks the floor plan to a spinner and rewrites the selection, which is
+   * right the first time and wrong every time after: this callback is rebuilt whenever any
+   * of its inputs changes identity, and the effect below re-runs with it. Without this
+   * guard a re-run for the zone already on screen threw the grid away mid-pick and dropped
+   * the tables the hostess had chosen. Data still refreshes on every run — silently,
+   * underneath her — but only a genuine zone change resets the UI.
+   */
+  const loadedZoneRef = useRef<number | null>(null);
+
   const loadOccupiedTables = useCallback(
     async (zoneID: number) => {
       if (!linkInfo) return;
-      setLoading(true);
-      const ok = await refreshFloorPlan();
-      if (!ok) toast.error(t('common.error'));
+      const isNewZone = loadedZoneRef.current !== zoneID;
+      loadedZoneRef.current = zoneID;
 
-      // If this booking already has tables assigned (e.g. re-opened from
-      // check-in), pre-select them instead of making the hostess re-pick —
-      // regardless of time window, since we're continuing this same booking.
-      // Nothing is being picked for a guest who is already at a table — pre-selecting
-      // would only dress the grid up as a seating flow that this screen refuses to run.
-      if (activeBooking?.zoneID === zoneID && !alreadySeated) {
-        // …except a table the store has since taken out of service: re-selecting
-        // it would put a `canreserve = 0` table straight back into the Seat
-        // payload, past a grid that already renders it as unavailable.
-        const activeTablenums = (activeBooking.seatTables ?? [])
-          .map((st) => st.reserTable ?? st.tableNum)
-          .filter((v): v is number => v != null)
-          .filter((n) => isTableReservable(tableByNum.get(n)));
-        setSelectedTablenums(new Set(activeTablenums));
-        // Already sitting across several tables — keep merging on so the
-        // pre-selection survives the first tap.
-        if (activeTablenums.length > 1) setMergeMode(true);
-      } else {
-        setSelectedTablenums(new Set());
+      if (isNewZone) {
+        setLoading(true);
+        // If this booking already has tables assigned (e.g. re-opened from
+        // check-in), pre-select them instead of making the hostess re-pick —
+        // regardless of time window, since we're continuing this same booking.
+        // Nothing is being picked for a guest who is already at a table — pre-selecting
+        // would only dress the grid up as a seating flow that this screen refuses to run.
+        if (activeBooking?.zoneID === zoneID && !alreadySeated) {
+          // …except a table the store has since taken out of service: re-selecting
+          // it would put a `canreserve = 0` table straight back into the Seat
+          // payload, past a grid that already renders it as unavailable.
+          const activeTablenums = (activeBooking.seatTables ?? [])
+            .map((st) => st.reserTable ?? st.tableNum)
+            .filter((v): v is number => v != null)
+            .filter((n) => isTableReservable(tableByNum.get(n)));
+          setSelectedTablenums(new Set(activeTablenums));
+          // Already sitting across several tables — keep merging on so the
+          // pre-selection survives the first tap.
+          if (activeTablenums.length > 1) setMergeMode(true);
+        } else {
+          setSelectedTablenums(new Set());
+        }
       }
-      setLoading(false);
+
+      const ok = await refreshFloorPlan();
+      // Only the load the hostess asked for reports trouble. A re-run for the zone already
+      // on screen is a background sweep like the 30-second poll, and those keep the last
+      // good picture rather than throwing an alert over the floor plan.
+      if (isNewZone && !ok) toast.error(t('common.error'));
+      if (isNewZone) setLoading(false);
     },
     [linkInfo, toast, t, activeBooking, alreadySeated, refreshFloorPlan, tableByNum],
   );
@@ -620,6 +640,16 @@ export function SeatingScreen() {
     }
   };
 
+  /**
+   * What the pinned action bar has to carry. Kept as flags rather than inline conditions
+   * so the bar itself is never rendered as an empty strip across the foot of the screen
+   * (browsing the floor plan with no booking, or looking at a guest already seated).
+   */
+  const showCapacityWarning = !!activeBooking && selectedTablenums.size > 0 && selectedCapacity < actualQty;
+  const showExcessWarning = !!activeBooking && isExcessCapacity(selectedCapacity, actualQty);
+  const canSeatNow = !!activeBooking && !alreadySeated;
+  const showActionBar = canSeatNow || !!releaseRetryNo || showCapacityWarning || showExcessWarning;
+
   // A guest already at a table can still be sitting on un-released food: the guide's known
   // gap is exactly the hostess who seats someone and never calls Release. Offer the button
   // from the booking card whenever Release's own preconditions are already satisfied.
@@ -832,63 +862,74 @@ export function SeatingScreen() {
                     />
                   </div>
 
-                  {activeBooking && selectedTablenums.size > 0 && selectedCapacity < actualQty && (
-                    <p className="note note-warn mt-2 flex shrink-0 items-start gap-1.5">
-                      <AlertIcon size={14} className="mt-px shrink-0" />
-                      {t('seating.capacityWarning', { selected: selectedCapacity, party: actualQty })}
-                    </p>
-                  )}
+                  {/* Pinned to the foot of the viewport, not left at the end of the
+                      document. Below `lg` the page itself is what scrolls, so in a zone
+                      of two hundred tables "Xếp vào bàn" sat an entire floor plan below
+                      the fold and every single guest cost a scroll to the bottom of the
+                      page and back. The warnings ride along with it: the reason a
+                      seating is a bad idea has to be readable from the button that
+                      commits it, not several screens above. */}
+                  {showActionBar && (
+                    <div className="action-bar sticky bottom-2 z-20 mt-2 shrink-0 space-y-2 p-2">
+                      {showCapacityWarning && (
+                        <p className="note note-warn flex items-start gap-1.5">
+                          <AlertIcon size={14} className="mt-px shrink-0" />
+                          {t('seating.capacityWarning', { selected: selectedCapacity, party: actualQty })}
+                        </p>
+                      )}
 
-                  {releaseRetryNo && (
-                    <div className="note note-bad mt-2 flex shrink-0 flex-wrap items-center justify-between gap-2">
-                      <span className="flex items-center gap-1.5">
-                        <AlertIcon size={14} className="shrink-0" />
-                        {t('preorder.releaseRetryHint')}
-                      </span>
-                      <button
-                        onClick={retryRelease}
-                        disabled={releasing}
-                        className="chip-btn btn-secondary shrink-0 rounded-lg px-3 text-xs font-semibold"
-                      >
-                        {releasing ? t('preorder.releasing') : t('preorder.retryRelease')}
-                      </button>
-                    </div>
-                  )}
+                      {releaseRetryNo && (
+                        <div className="note note-bad flex flex-wrap items-center justify-between gap-2">
+                          <span className="flex items-center gap-1.5">
+                            <AlertIcon size={14} className="shrink-0" />
+                            {t('preorder.releaseRetryHint')}
+                          </span>
+                          <button
+                            onClick={retryRelease}
+                            disabled={releasing}
+                            className="chip-btn btn-secondary shrink-0 rounded-lg px-3 text-xs font-semibold"
+                          >
+                            {releasing ? t('preorder.releasing') : t('preorder.retryRelease')}
+                          </button>
+                        </div>
+                      )}
 
-                  {activeBooking && isExcessCapacity(selectedCapacity, actualQty) && (
-                    <p className="note note-warn mt-2 flex shrink-0 items-start gap-1.5">
-                      <AlertIcon size={14} className="mt-px shrink-0" />
-                      {t('seating.excessCapacityWarning', {
-                        tables: selectedTablenums.size,
-                        selected: selectedCapacity,
-                        party: actualQty,
-                        excess: selectedCapacity - actualQty,
-                      })}
-                    </p>
-                  )}
+                      {showExcessWarning && (
+                        <p className="note note-warn flex items-start gap-1.5">
+                          <AlertIcon size={14} className="mt-px shrink-0" />
+                          {t('seating.excessCapacityWarning', {
+                            tables: selectedTablenums.size,
+                            selected: selectedCapacity,
+                            party: actualQty,
+                            excess: selectedCapacity - actualQty,
+                          })}
+                        </p>
+                      )}
 
-                  {/* Gone entirely, not disabled: a greyed-out "Xếp vào bàn" reads as
-                      "try again later" on a guest who is already seated. */}
-                  {activeBooking && !alreadySeated && (
-                    <div className="mt-2.5 flex shrink-0 flex-wrap gap-2">
-                      <button
-                        onClick={seatToZone}
-                        disabled={selectedTablenums.size > 0}
-                        className="chip-btn btn-primary rounded-lg px-4 text-sm font-semibold"
-                      >
-                        {t('seating.seatToZone')}
-                      </button>
-                      <button
-                        onClick={seatToTables}
-                        disabled={selectedTablenums.size === 0}
-                        className="chip-btn btn-success rounded-lg px-4 text-sm font-semibold"
-                      >
-                        {t('seating.seatToTable')}
-                        {selectedTablenums.size > 0 &&
-                          ` ${Array.from(selectedTablenums)
-                            .map((n) => `#${n}`)
-                            .join(' + ')}`}
-                      </button>
+                      {/* Gone entirely, not disabled: a greyed-out "Xếp vào bàn" reads as
+                          "try again later" on a guest who is already seated. */}
+                      {canSeatNow && (
+                        <div className="flex flex-wrap gap-2">
+                          <button
+                            onClick={seatToZone}
+                            disabled={selectedTablenums.size > 0}
+                            className="touch-btn btn-primary flex-1 rounded-xl px-4 text-sm font-semibold"
+                          >
+                            {t('seating.seatToZone')}
+                          </button>
+                          <button
+                            onClick={seatToTables}
+                            disabled={selectedTablenums.size === 0}
+                            className="touch-btn btn-success flex-[2] rounded-xl px-4 text-sm font-semibold"
+                          >
+                            {t('seating.seatToTable')}
+                            {selectedTablenums.size > 0 &&
+                              ` ${Array.from(selectedTablenums)
+                                .map((n) => `#${n}`)
+                                .join(' + ')}`}
+                          </button>
+                        </div>
+                      )}
                     </div>
                   )}
                 </>

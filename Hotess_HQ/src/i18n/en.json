@@ -18,6 +18,10 @@
   "common.durationMinutes": "{{minutes}} min",
   "common.durationHoursMinutes": "{{hours}}h {{minutes}}m",
 
+  "toast.successTitle": "Success",
+  "toast.errorTitle": "Error",
+  "toast.infoTitle": "Notice",
+
   "login.title": "Staff Login",
   "login.username": "Username",
   "login.password": "Password",

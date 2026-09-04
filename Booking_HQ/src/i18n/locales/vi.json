@@ -83,9 +83,18 @@
     "howItWorks": {
       "heading": "Cách thức hoạt động",
       "steps": [
-        { "title": "Tìm kiếm", "desc": "Cho chúng tôi biết ngày và số khách, chúng tôi sẽ hiển thị các nhà hàng còn bàn trống." },
-        { "title": "Chọn giờ", "desc": "Chọn khu vực ngồi và giờ phù hợp với bạn." },
-        { "title": "Xác nhận", "desc": "Điền thông tin của bạn và hoàn tất — không cần gọi điện, không cần chờ đợi." }
+        {
+          "title": "Tìm kiếm",
+          "desc": "Cho chúng tôi biết ngày và số khách, chúng tôi sẽ hiển thị các nhà hàng còn bàn trống."
+        },
+        {
+          "title": "Chọn giờ",
+          "desc": "Chọn khu vực ngồi và giờ phù hợp với bạn."
+        },
+        {
+          "title": "Xác nhận",
+          "desc": "Điền thông tin của bạn và hoàn tất — không cần gọi điện, không cần chờ đợi."
+        }
       ]
     },
     "restaurants": {
@@ -268,6 +277,51 @@
     "issueSoldOut": "{{name}} đã hết",
     "acceptChanges": "Cập nhật đơn của tôi",
     "rebuilding": "Đang cập nhật…",
-    "backToBookings": "Đặt bàn của tôi"
+    "backToBookings": "Đặt bàn của tôi",
+    "couponTitle": "Mã giảm giá",
+    "couponPlaceholder": "Nhập mã giảm giá",
+    "couponPlaceholderMore": "Nhập thêm mã",
+    "couponApply": "Áp dụng",
+    "couponRemove": "Gỡ mã",
+    "couponPick": "Xem mã khả dụng",
+    "couponNone": "Chưa có mã nào khả dụng cho giỏ này.",
+    "couponUse": "Dùng mã",
+    "couponApplied": "Đã áp",
+    "couponReplace": "Dùng thay mã cũ",
+    "couponRemoveOneFirst": "Gỡ bớt một mã để dùng mã này",
+    "couponGift": "Tặng",
+    "couponShortfall": "Còn thiếu",
+    "couponCapped": "Đã đạt mức giảm tối đa của mã này.",
+    "discount": "Giảm giá",
+    "estimatedTotal": "Tạm tính sau giảm",
+    "close": "Đóng",
+    "priceLockKept": "Ưu đãi đã được giữ cho bữa ăn của bạn.",
+    "priceLockReprice": "Ưu đãi sẽ được tính lại khi bạn đến nhà hàng.",
+    "COUPON_DISABLED": "Nhà hàng chưa mở tính năng mã giảm giá.",
+    "COUPON_NOT_FOUND": "Mã không đúng hoặc không áp dụng cho nhà hàng này.",
+    "COUPON_EXPIRED": "Mã đã hết hạn.",
+    "COUPON_NOT_IN_SCHEDULE": "Mã không áp dụng cho khung giờ bữa ăn bạn đã chọn.",
+    "COUPON_CHANNEL_NOT_ALLOWED": "Mã không áp dụng cho đặt món trước.",
+    "COUPON_MIN_NOT_MET": "Đơn hàng chưa đạt giá trị tối thiểu.",
+    "COUPON_NO_ELIGIBLE_ITEM": "Giỏ chưa có món áp dụng được mã này.",
+    "COUPON_REQUIRES_ITEM": "Cần chọn kèm món quy định để dùng mã.",
+    "COUPON_LIMIT_REACHED": "Mã đã hết lượt sử dụng.",
+    "COUPON_ALREADY_USED": "Bạn đã dùng mã này rồi.",
+    "COUPON_CONFLICT": "Mã này không dùng chung được với mã đang áp.",
+    "COUPON_MAX_REACHED": "Đơn đã dùng tối đa số mã giảm giá cho phép.",
+    "COUPON_EXCEEDS_TOTAL": "Tổng tiền giảm đã vượt giá trị đơn hàng.",
+    "COUPON_INVALID": "Mã đã hết hiệu lực, vui lòng kiểm tra lại giỏ.",
+    "COUPON_MEMBER_REQUIRED": "Mã chỉ dành cho thành viên.",
+    "COUPON_TOO_MANY_ATTEMPTS": "Bạn đã thử quá nhiều lần, vui lòng thử lại sau.",
+    "promoBuy": "Mua",
+    "promoPay": "tính",
+    "promoWholeBill": "Cả đơn",
+    "promoOnly": "Chỉ còn",
+    "promoMinCost": "Đơn từ",
+    "promoMinQuan": "Mua tối thiểu",
+    "promoMemberOnly": "Dành cho thành viên",
+    "promoPinnedHint": "Tự áp khi bạn thêm món",
+    "promoAuto": "Tự động giảm",
+    "promoAutoHint": "Tự áp — không cần mã"
   }
 }
