@@ -99,6 +99,16 @@ export function SeatingScreen() {
   const [cancelling, setCancelling] = useState(false);
   /** Reservation awaiting the "really call the food off?" confirmation. */
   const [cancelTargetNo, setCancelTargetNo] = useState<string | null>(null);
+  /**
+   * Bumped whenever this screen changes a booking's food, so the open booking card re-reads
+   * its own orders. The card fetches per booking (`H-04`) and would otherwise keep showing
+   * the set from before the Release/Cancel that just ran.
+   */
+  const [preOrderTick, setPreOrderTick] = useState(0);
+  const preOrdersChanged = useCallback(() => {
+    void reloadPreOrders();
+    setPreOrderTick((n) => n + 1);
+  }, [reloadPreOrders]);
   const activePreOrders = preOrdersFor(activeBooking?.reservationNo);
 
   /**
@@ -477,7 +487,7 @@ export function SeatingScreen() {
     setReleasing(true);
     try {
       const result = await releaseReservationOrders(reservationNo);
-      void reloadPreOrders();
+      preOrdersChanged();
       setReleaseRetryNo(null);
       if (result.warnings.length > 0 || result.skipped > 0 || result.released === 0) {
         setReleaseResult(result);
@@ -512,7 +522,7 @@ export function SeatingScreen() {
     setCancelling(true);
     try {
       const cancelled = await cancelReservationOrders(reservationNo, 'GUEST_CANCELLED_AT_CHECKIN');
-      await reloadPreOrders();
+      preOrdersChanged();
       // Anything already released is out of reach here, so 0 is a real answer, not a no-op.
       if (cancelled > 0) toast.success(t('preorder.cancelSuccess', { count: cancelled }));
       else toast.info(t('preorder.cancelNothing'));
@@ -653,11 +663,13 @@ export function SeatingScreen() {
   // A guest already at a table can still be sitting on un-released food: the guide's known
   // gap is exactly the hostess who seats someone and never calls Release. Offer the button
   // from the booking card whenever Release's own preconditions are already satisfied.
+  // Nothing about the orders themselves is checked here: the panel draws no buttons when it
+  // has no orders, and it now reads them per booking, so gating on this screen's store-wide
+  // list would hide Release for exactly the order that list happened to miss.
   const detailReleasable =
     !!detailBooking &&
     detailBooking.status === BookingStatus.Seated &&
-    (detailBooking.seatTables ?? []).some((st) => (st.reserTable ?? st.tableNum) != null) &&
-    preOrdersFor(detailBooking.reservationNo).length > 0;
+    (detailBooking.seatTables ?? []).some((st) => (st.reserTable ?? st.tableNum) != null);
 
   return (
     <div className="mx-auto flex w-full max-w-[1280px] flex-col lg:h-full lg:min-h-0">
@@ -1115,6 +1127,8 @@ export function SeatingScreen() {
       <BookingDetailModal
         booking={detailBooking}
         preOrders={preOrdersFor(detailBooking?.reservationNo)}
+        preOrdersRefreshTick={preOrderTick}
+        onPreOrdersChanged={preOrdersChanged}
         onRelease={detailReleasable ? () => void releasePreOrders(detailBooking!.reservationNo) : undefined}
         releasing={releasing}
         // No extra gate: the panel only ever lists orders that are still callable off, so if

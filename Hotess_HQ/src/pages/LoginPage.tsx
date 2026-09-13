@@ -2,6 +2,7 @@ import { useState, type FormEvent } from 'react';
 import { useTranslation } from 'react-i18next';
 import { useAuth } from '../store/AuthContext';
 import { useToast } from '../components/ToastProvider';
+import { apiErrorMessage } from '../utils/apiError';
 
 export function LoginPage() {
   const { t } = useTranslation();
@@ -14,8 +15,12 @@ export function LoginPage() {
     e.preventDefault();
     try {
       await login(userName, password);
-    } catch {
-      toast.error(t('login.error'));
+    } catch (err) {
+      // The reason matters more here than anywhere else in the app. A signing failure
+      // answers with the middleware's own wording — "client clock is off by 7 minute(s)" —
+      // and that sentence is the whole diagnosis. Replacing it with "Đăng nhập thất bại"
+      // sends the floor looking for a password problem that does not exist.
+      toast.error(apiErrorMessage(err, t('login.error')));
     }
   };
 

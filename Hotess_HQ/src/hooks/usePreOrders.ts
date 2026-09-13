@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useState } from 'react';
-import { fetchPreOrdersByReservation } from '../api/orderHub';
+import { fetchPreOrdersByReservation, fetchPreOrdersForReservation } from '../api/orderHub';
 import type { PreOrder, SiteScope } from '../types';
 
 const EMPTY: PreOrder[] = [];
@@ -47,5 +47,71 @@ export function usePreOrders(scope: Pick<SiteScope, 'siteId' | 'sNum'> | null | 
     preOrdersFailed: failed,
     preOrdersTruncated: truncated,
     reloadPreOrders: reload,
+  };
+}
+
+/**
+ * One booking's pre-orders, read from the endpoint built for exactly that (`H-04`).
+ *
+ * `usePreOrders` above pulls the whole store's pre-release orders and matches them client
+ * side — right for a list of bookings, and the wrong shape for a detail panel: it walks
+ * pages per status, so an order that changes status mid-walk falls out of the result
+ * entirely. `GET Reservation/{no}/Orders` answers for one booking in one call with no such
+ * hole, which is why the detail view asks it directly.
+ *
+ * `fallback` is the list-derived set the caller already had. It stays on screen while the
+ * fresh read is in flight and if that read fails, so opening a booking card never blanks a
+ * panel that was showing the guest's food a moment ago.
+ */
+export function useReservationPreOrders(
+  reservationNo: string | null | undefined,
+  scope: Pick<SiteScope, 'siteId' | 'sNum'> | null | undefined,
+  fallback: PreOrder[],
+  /** Bumped by the caller after Release/Cancel so this re-reads instead of showing the old set. */
+  refreshTick = 0,
+) {
+  const { siteId, sNum } = scope ?? {};
+  /**
+   * The result is stored WITH the booking it belongs to.
+   *
+   * Keeping bare orders here is how one guest's food ends up under another guest's name:
+   * the hostess closes one card and opens the next, and until the new read lands the old
+   * array is still the freshest thing this hook has. Pairing the two means a result is
+   * only ever shown against the booking it was fetched for.
+   */
+  const [fetched, setFetched] = useState<{ reservationNo: string; orders: PreOrder[] } | null>(null);
+  const [loading, setLoading] = useState(false);
+  const [tick, setTick] = useState(0);
+
+  const key = reservationNo ? String(reservationNo) : null;
+
+  useEffect(() => {
+    if (!key || siteId == null || sNum == null) return;
+    let cancelled = false;
+    setLoading(true);
+    fetchPreOrdersForReservation(key, { siteId, sNum })
+      .then((orders) => {
+        if (!cancelled) setFetched({ reservationNo: key, orders });
+      })
+      .catch(() => {
+        // Fall back to what the list already knew rather than claiming the guest ordered
+        // nothing — an empty panel would hide food that is genuinely waiting.
+        if (!cancelled) setFetched(null);
+      })
+      .finally(() => {
+        if (!cancelled) setLoading(false);
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [key, siteId, sNum, refreshTick, tick]);
+
+  const current = fetched?.reservationNo === key ? fetched.orders : null;
+
+  return {
+    preOrders: current ?? fallback,
+    /** True only while the first read for THIS booking is still out. */
+    preOrdersLoading: loading && current == null,
+    reloadPreOrders: useCallback(() => setTick((n) => n + 1), []),
   };
 }

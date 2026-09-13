@@ -1,10 +1,16 @@
 import { useTranslation } from 'react-i18next';
 import type { PreOrder } from '../types';
 import { formatVnd } from '../utils/money';
-import { AlertIcon, DishIcon } from './icons';
+import { AlertIcon, DishIcon, PencilIcon } from './icons';
 
 interface PreOrderPanelProps {
   preOrders: PreOrder[];
+  /**
+   * Opens the line editor for one order (`H-05`). Left undefined when the account lacks
+   * `Reservation PreOrder Edit`, which is what hides the button entirely — a control that
+   * only ever answers "bạn không có quyền" is worse than no control.
+   */
+  onEditOrder?: (order: PreOrder) => void;
   /** Shown only when the booking is already seated with a table — Release needs both. */
   onRelease?: () => void;
   releasing?: boolean;
@@ -19,12 +25,24 @@ function isUnpaidPreOrder(order: PreOrder): boolean {
 }
 
 /**
+ * Whether `A-29` will accept a change to this order.
+ *
+ * `scheduled` and nothing else: anything further along is already on a POS bill, and editing
+ * it at HQ would change a copy while the guest still pays for what was there before. The
+ * server refuses too — this is here so the refusal never reaches a hostess as a surprise.
+ */
+function isEditablePreOrder(order: PreOrder): boolean {
+  return order.orderStatus === 'scheduled';
+}
+
+/**
  * The food a guest chose before arriving, as the hostess needs to see it: what was ordered,
  * how much it comes to, and whether anything is still unpaid. The dishes are not at the
  * kitchen yet — they go there when the booking is seated and Release runs (§8.4).
  */
 export function PreOrderPanel({
   preOrders,
+  onEditOrder,
   onRelease,
   releasing,
   onCancel,
@@ -68,6 +86,18 @@ export function PreOrderPanel({
                 </li>
               ))}
             </ul>
+            {/* Per order, not per booking: a booking can carry several orders and `A-29`
+                edits exactly one of them. */}
+            {onEditOrder && isEditablePreOrder(order) && (
+              <button
+                onClick={() => onEditOrder(order)}
+                disabled={releasing || cancelling}
+                className="chip-btn btn-secondary mt-2 flex items-center gap-1.5 rounded-lg px-3 text-xs font-semibold"
+              >
+                <PencilIcon size={13} />
+                {t('preorderEdit.open')}
+              </button>
+            )}
           </div>
         ))}
       </div>

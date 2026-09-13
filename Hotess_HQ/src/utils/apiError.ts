@@ -51,6 +51,23 @@ function messageFromBody(data: unknown): string | null {
   return null;
 }
 
+/**
+ * The stable machine code behind a refusal, when the backend attached one.
+ *
+ * `APIResultExtensions` puts it in two places at once: `errorCode` at the top level for new
+ * integrators, and `data.code` for the OrderHub V2 endpoints whose contract froze that shape
+ * (SPEC-00 §5). Both are read here so a caller never has to know which endpoint it is talking
+ * to — and branching on the code is the only safe way to branch, since `message` is prose
+ * that gets reworded.
+ */
+export function apiErrorCode(error: unknown): string | null {
+  if (!axios.isAxiosError(error)) return null;
+  const body = error.response?.data as
+    | { errorCode?: unknown; data?: { code?: unknown } | null }
+    | undefined;
+  return textFrom(body?.errorCode) ?? textFrom(body?.data?.code);
+}
+
 /** `fallback` is the caller's localized "something went wrong" line, used only when the failure says nothing. */
 export function apiErrorMessage(error: unknown, fallback: string): string {
   if (axios.isAxiosError(error)) {

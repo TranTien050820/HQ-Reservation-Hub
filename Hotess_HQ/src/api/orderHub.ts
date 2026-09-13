@@ -3,8 +3,10 @@ import { fetchAllPages } from './paginate';
 import {
   PRE_RELEASE_ORDER_STATUSES,
   type ApiEnvelope,
+  type EditPreOrderResult,
   type PagedResult,
   type PreOrder,
+  type PreOrderLineChange,
   type ReservationReleaseResult,
   type SiteScope,
 } from '../types';
@@ -25,18 +27,25 @@ interface OrderHubOrdersPage {
 }
 
 /**
- * One page of orders in a single status. `Status` is an exact match server-side, so covering
- * several statuses means one call each. `From`/`To` are deliberately not sent: they filter on
- * `CreatedAt`, and a pre-order for tonight may well have been placed last week.
+ * One page of orders. `Status` is an exact match server-side, so covering several statuses
+ * means one call each. `From`/`To` are deliberately not sent: they filter on `CreatedAt`, and
+ * a pre-order for tonight may well have been placed last week.
  */
 async function fetchOrdersPage(
   scope: Pick<SiteScope, 'siteId' | 'sNum'>,
-  status: string,
+  filter: { status?: string; search?: string },
   pageIndex: number,
   pageSize: number,
 ): Promise<PagedResult<PreOrder>> {
   const res = await http.get<ApiEnvelope<OrderHubOrdersPage>>('/api/OrderHub/Orders', {
-    params: { SiteId: scope.siteId, StoreId: scope.sNum, Status: status, Page: pageIndex, PageSize: pageSize },
+    params: {
+      SiteId: scope.siteId,
+      StoreId: scope.sNum,
+      Status: filter.status,
+      Search: filter.search,
+      Page: pageIndex,
+      PageSize: pageSize,
+    },
   });
   const data = res.data.data;
   const items = data?.items ?? [];
@@ -70,7 +79,7 @@ export async function fetchPreOrdersByReservation(
 ): Promise<PreOrdersByReservation> {
   const pages = await Promise.all(
     PRE_RELEASE_ORDER_STATUSES.map((status) =>
-      fetchAllPages((pageIndex, pageSize) => fetchOrdersPage(scope, status, pageIndex, pageSize)),
+      fetchAllPages((pageIndex, pageSize) => fetchOrdersPage(scope, { status }, pageIndex, pageSize)),
     ),
   );
 
@@ -89,6 +98,111 @@ export async function fetchPreOrdersByReservation(
   }
 
   return { byReservation, truncated: pages.some((p) => p.truncated) };
+}
+
+/** Raw shape of GET api/OrderHub/Reservation/{no}/Orders (`A-30`). */
+interface ReservationOrdersResponse {
+  reservationNo: string;
+  orders: PreOrder[];
+}
+
+/** Enough page for every order one booking could carry; nobody pre-orders 200 times. */
+const RESERVATION_ORDERS_PAGE = 200;
+
+/**
+ * Every pre-order of ONE booking — `GET api/OrderHub/Reservation/{no}/Orders` (`A-30`).
+ *
+ * The list path above walks each pre-release status through `fetchAllPages`, and an order
+ * that changes status between two pages is an order that vanishes from the result. Asking
+ * the server for one booking removes both the page walk and that hole, so **this is the
+ * call to use whenever a single booking is on screen**.
+ *
+ * Deliberately NOT used for lists: one call per row turns a screen showing twenty bookings
+ * into twenty calls, which is worse than the four the list path costs however busy the day.
+ *
+ * The result is narrowed to the pre-release statuses so the panel keeps its meaning — every
+ * order it shows is one the hostess can still release, edit, or call off. `A-30` also
+ * returns already-released and cancelled orders, which belong to the POS bill, not here.
+ */
+export async function fetchPreOrdersForReservation(
+  reservationNo: string,
+  scope: Pick<SiteScope, 'siteId' | 'sNum'>,
+): Promise<PreOrder[]> {
+  const res = await http.get<ApiEnvelope<ReservationOrdersResponse>>(
+    `/api/OrderHub/Reservation/${encodeURIComponent(reservationNo)}/Orders`,
+  );
+  const orders = (res.data.data?.orders ?? []).filter((order) =>
+    (PRE_RELEASE_ORDER_STATUSES as readonly string[]).includes(order.orderStatus),
+  );
+  return orders.length > 0 ? hydrateItems(orders, reservationNo, scope) : orders;
+}
+
+/**
+ * Put the dish lines back on orders that came without them.
+ *
+ * `A-30` as deployed returns the order rows only — no `items` — while the panel exists to
+ * show what the guest ordered and the edit modal works line by line. One extra call keyed
+ * on the booking code fills them in, and the moment the endpoint starts carrying `items`
+ * this returns untouched after zero calls.
+ *
+ * `Search` is a fuzzy multi-field match, so it is used ONLY as a line source: which orders
+ * belong to the booking is decided by `A-30` alone. An order the search fails to bring back
+ * simply keeps no lines rather than borrowing another booking's.
+ */
+async function hydrateItems(
+  orders: PreOrder[],
+  reservationNo: string,
+  scope: Pick<SiteScope, 'siteId' | 'sNum'>,
+): Promise<PreOrder[]> {
+  if (orders.every((order) => Array.isArray(order.items))) return orders;
+
+  try {
+    const page = await fetchOrdersPage(scope, { search: reservationNo }, 1, RESERVATION_ORDERS_PAGE);
+    const itemsByUid = new Map(page.items.map((order) => [order.orderUid, order.items]));
+    return orders.map((order) =>
+      Array.isArray(order.items) ? order : { ...order, items: itemsByUid.get(order.orderUid) ?? null },
+    );
+  } catch {
+    // The totals and the actions are all still correct without lines; a panel that lists no
+    // dishes beats a panel that fails to open.
+    return orders;
+  }
+}
+
+/**
+ * POST api/OrderHub/Reservation/{no}/Orders/{uid}/Lines — the hostess drops a dish or
+ * lowers a quantity before the guest arrives (`A-29`, STT 13).
+ *
+ * Three server rules the UI has to have honoured before it ever gets here:
+ * `scheduled` orders only, no additions and no increases, and `refundDue` is a number to
+ * act on by hand — nothing about this call moves money back to the guest.
+ *
+ * `empNum` stamps the order's event log with who did it. It carries the app's `userId`,
+ * the same actor `userSeat` records when the guest is seated, so one booking's audit trail
+ * names the same person throughout.
+ */
+export async function editPreOrderLines(
+  reservationNo: string,
+  orderUid: string,
+  changes: PreOrderLineChange[],
+  options: { empNum?: number | null; note?: string } = {},
+): Promise<EditPreOrderResult> {
+  const res = await http.post<ApiEnvelope<EditPreOrderResult>>(
+    `/api/OrderHub/Reservation/${encodeURIComponent(reservationNo)}/Orders/${encodeURIComponent(orderUid)}/Lines`,
+    {
+      empNum: options.empNum ?? undefined,
+      changes,
+      note: options.note?.trim() || undefined,
+    },
+  );
+  const data = res.data.data;
+  return {
+    orderUid: data?.orderUid ?? orderUid,
+    reservationNo: data?.reservationNo ?? reservationNo,
+    grandTotal: data?.grandTotal ?? 0,
+    refundDue: data?.refundDue ?? 0,
+    couponWarnings: data?.couponWarnings ?? [],
+  };
 }
 
 /**

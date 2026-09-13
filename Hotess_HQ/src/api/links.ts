@@ -16,6 +16,12 @@ import type {
 /** Raw shape of GET /api/ReservationLinks/Booking?publicKey=... (ReservationConfigDTO). */
 interface RawReservationConfig {
   linkInfo: { siteId: number; sNum: number; statNum: number; channelId?: number };
+  /**
+   * The store's own branding block (`BookingSettingsDTO`). It already travels with this
+   * response, so the outlet name on a booking slip costs no extra request — a store that
+   * filled it in never needs `api/StoreInfo` at all.
+   */
+  settings?: { storeName?: string | null; address?: string | null } | null;
   zones?: ReservationZone[];
   zoneSectionLinks?: ReserZoneSectionLink[];
   sections?: Section[];
@@ -37,6 +43,8 @@ export async function fetchLinkInfoByPublicKey(publicKey: string): Promise<LinkI
   if (!payload?.linkInfo) throw new Error('Store not found for this link');
   return {
     ...payload.linkInfo,
+    storeName: payload.settings?.storeName?.trim() || null,
+    address: payload.settings?.address?.trim() || null,
     zones: payload.zones ?? [],
     tableSetups: payload.tableSetups ?? [],
     sections: payload.sections ?? [],

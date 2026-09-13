@@ -18,14 +18,32 @@ import {
   SearchIcon,
   UsersIcon,
 } from '../components/icons';
-import { searchBookings } from '../api/bookings';
+import { lookupBookingsAnyDate, searchBookings } from '../api/bookings';
 import { fetchAvailableSlots } from '../api/availableSlots';
 import { fetchWaitlists } from '../api/waitlists';
 import { usePreOrders } from '../hooks/usePreOrders';
 import { BookingStatus, WaitlistStatus, type ReservationBooking } from '../types';
 import { apiErrorMessage } from '../utils/apiError';
-import { todayStr } from '../utils/date';
+import { formatVnDate, todayStr, vnEpochMs } from '../utils/date';
 import { isTerminalBooking } from '../utils/bookingStatus';
+import { normalizeScan } from '../utils/scan';
+
+/** How many near-miss bookings the empty-result panel lists before it just gives a count. */
+const MISS_ROWS = 3;
+
+/**
+ * Nearest to today first.
+ *
+ * A guest standing at the door with the wrong day is out by a day or two, essentially never
+ * by a year — so the booking that explains their slip is the one closest to today, not the
+ * one the backend happened to return first.
+ */
+function byClosenessToToday(a: ReservationBooking, b: ReservationBooking): number {
+  const today = vnEpochMs(todayStr()) ?? 0;
+  const distance = (booking: ReservationBooking) =>
+    Math.abs((vnEpochMs(booking.reservationDate) ?? 0) - today);
+  return distance(a) - distance(b);
+}
 
 /** The four numbers a hostess is asked for at the door, before anyone searches anything. */
 interface DoorStats {
@@ -36,7 +54,7 @@ interface DoorStats {
 }
 
 export function CheckinScreen() {
-  const { t } = useTranslation();
+  const { t, i18n } = useTranslation();
   const navigate = useNavigate();
   const toast = useToast();
   const { linkInfo } = useStore();
@@ -53,6 +71,23 @@ export function CheckinScreen() {
   });
   /** Booking still in New(1) that the hostess has been asked to confirm seating for. */
   const [unconfirmed, setUnconfirmed] = useState<ReservationBooking | null>(null);
+  /**
+   * What was actually searched for, and what it was extracted from.
+   *
+   * A lookup that finds nothing is the one moment the hostess has to compare the app against
+   * the paper in the guest's hand, and she cannot do that against a search box showing a code
+   * the app derived rather than the string the QR carried.
+   */
+  const [lastSearch, setLastSearch] = useState<{ raw: string; code: string } | null>(null);
+  /**
+   * Bookings that DO match what was searched, just not as something today's list can show —
+   * booked for another date, or already cancelled/closed.
+   *
+   * Only ever filled when the normal search found nothing. It exists because the backend ANDs
+   * its filters: a real code on the guest's slip disappears behind `ReservationDate=today` and
+   * comes back as "không tìm thấy đặt chỗ", which is the one answer that is actively wrong.
+   */
+  const [missMatches, setMissMatches] = useState<ReservationBooking[]>([]);
   const { preOrdersFor } = usePreOrders(linkInfo);
 
   /**
@@ -96,7 +131,12 @@ export function CheckinScreen() {
       setIsSearching(true);
       setSearched(true);
       try {
-        const trimmed = raw.trim();
+        const entered = raw.trim();
+        // Booking channels encode either a bare code or the whole booking link, and a guest
+        // just as often forwards that link for the hostess to paste. One rule covers both:
+        // pull the code out of a URL, leave anything else exactly as typed.
+        const trimmed = normalizeScan(entered);
+        setLastSearch({ raw: entered, code: trimmed });
         // The backend only accepts one keyword field per request, so probe
         // ReservationNo and BookingPhone in parallel and merge the results.
         const [byCode, byPhone] = await Promise.all([
@@ -111,7 +151,13 @@ export function CheckinScreen() {
         for (const b of [...byCode.items, ...byPhone.items]) {
           if (!isTerminalBooking(b.status)) merged.set(b.globalId, b);
         }
-        setResults(Array.from(merged.values()));
+        const found = Array.from(merged.values());
+        setResults(found);
+
+        // Nothing for today does not mean nothing exists. Look again without the date, and
+        // let the panel below say which it is — wrong day, or a booking already called off.
+        // Deliberately inside the same `isSearching` window, so the spinner covers it.
+        setMissMatches(found.length > 0 ? [] : (await lookupBookingsAnyDate(linkInfo, trimmed)).sort(byClosenessToToday));
       } catch (err) {
         toast.error(apiErrorMessage(err, t('common.error')));
       } finally {
@@ -162,13 +208,22 @@ export function CheckinScreen() {
   const handleScan = useCallback(
     (text: string) => {
       setQrOpen(false);
-      setQuery(text);
+      // The box shows what the camera read, warts and all — `runSearch` is what turns a
+      // booking link into a code, and it records both so a miss can show them.
+      setQuery(text.trim());
       void runSearch(text);
     },
     [runSearch],
   );
 
   const hasQuery = query.trim().length > 0;
+
+  /** "18/09/2026 · 17:00", or just the date for a booking that never got a time. */
+  const whenOf = (booking: ReservationBooking) => {
+    const date = formatVnDate(i18n.language, vnEpochMs(booking.reservationDate) ?? 0);
+    const time = booking.reservationTime?.slice(0, 5);
+    return time ? `${date} · ${time}` : date;
+  };
 
   const statCards: {
     key: string;
@@ -205,7 +260,11 @@ export function CheckinScreen() {
           <SearchIcon size={20} className="shrink-0 text-faint" />
           <input
             value={query}
-            onChange={(e) => setQuery(e.target.value)}
+            onChange={(e) => {
+              setQuery(e.target.value);
+              setLastSearch(null);
+              setMissMatches([]);
+            }}
             onKeyDown={(e) => e.key === 'Enter' && hasQuery && runSearch(query)}
             placeholder={t('checkin.searchPlaceholder')}
             aria-label={t('checkin.searchPlaceholder')}
@@ -228,6 +287,57 @@ export function CheckinScreen() {
               {t('checkin.noResults')}
             </p>
             <p className="mt-1 pl-6 opacity-85">{t('checkin.noResultsHint')}</p>
+            {/* The code that was actually searched, and — when the QR held a URL — the
+                string it came out of. Both, because the hostess is checking the app
+                against a printed slip and only one of the two is on that slip. */}
+            {lastSearch && (
+              <div className="mt-2 pl-6 text-xs">
+                <p className="text-muted">
+                  {t('checkin.scannedCode')}{' '}
+                  <span className="font-mono font-semibold text-ink">{lastSearch.code}</span>
+                </p>
+                {lastSearch.raw !== lastSearch.code && (
+                  <p className="mt-0.5 break-all text-faint">
+                    {t('checkin.scannedRaw')} <span className="font-mono">{lastSearch.raw}</span>
+                  </p>
+                )}
+              </div>
+            )}
+            {/* The code IS real — it just isn't a booking for today. Naming the actual reason
+                is the difference between "phiếu của anh ghi ngày 18/08" and sending the guest
+                away. Read-only on purpose: seating from here would write a seat hold stamped
+                with that other date. */}
+            {missMatches.length > 0 && (
+              <div className="mt-3 border-t border-current/15 pt-2.5 pl-6">
+                <p className="text-xs font-semibold">{t('checkin.missTitle')}</p>
+                <div className="mt-1.5 space-y-1.5">
+                  {missMatches.slice(0, MISS_ROWS).map((b) => (
+                    <div key={b.globalId} className="rounded-lg border border-line bg-surface px-2.5 py-1.5">
+                      <p className="flex flex-wrap items-baseline gap-x-2 text-sm font-semibold text-ink">
+                        {b.bookingName}
+                        <span className="text-xs font-normal text-muted">
+                          {b.bookingPhone} · {b.partySize}p
+                        </span>
+                      </p>
+                      <p className="mt-0.5 text-xs text-muted">
+                        <span className="font-mono">{b.reservationNo}</span> ·{' '}
+                        {/* "Đã huỷ" wins over "ngày khác": a cancelled booking dated last week
+                            is not a guest who came on the wrong day, and showing only the date
+                            invites the hostess to seat them anyway. */}
+                        {isTerminalBooking(b.status)
+                          ? t('checkin.missClosed', { when: whenOf(b) })
+                          : t('checkin.missOtherDate', { when: whenOf(b) })}
+                      </p>
+                    </div>
+                  ))}
+                </div>
+                {missMatches.length > MISS_ROWS && (
+                  <p className="mt-1.5 text-xs opacity-80">
+                    {t('checkin.missMore', { count: missMatches.length - MISS_ROWS })}
+                  </p>
+                )}
+              </div>
+            )}
             <div className="mt-2.5 flex flex-wrap gap-2 pl-6">
               <button
                 onClick={() => navigate('../waitlist')}

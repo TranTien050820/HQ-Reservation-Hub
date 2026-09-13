@@ -33,6 +33,37 @@ export async function searchBookings(filters: ReservationBookingFilters): Promis
 }
 
 /**
+ * How many rows one keyword is allowed to pull when the date filter is off. A phone number
+ * can carry a year of history; the caller only ever shows the nearest few.
+ */
+const LOOKUP_PAGE_SIZE = 20;
+
+/**
+ * Bookings matching a code or phone on ANY date — why a check-in search came back empty.
+ *
+ * `GET ReservationBookings` ANDs its filters, so the check-in screen's `ReservationDate=today`
+ * hides a booking whose date is wrong or whose guest turned up on the wrong day: the code is
+ * real, the row exists, and the hostess is told "không tìm thấy đặt chỗ". This is the second
+ * look that turns that dead end into an answer — run ONLY after the normal search finds
+ * nothing, so a working day never pays for it.
+ *
+ * Both keyword fields are probed for the same reason the main search does: the backend takes
+ * one per request, and a guest at the door gives whichever they have.
+ */
+export async function lookupBookingsAnyDate(
+  scope: Partial<SiteScope>,
+  term: string,
+): Promise<ReservationBooking[]> {
+  const [byCode, byPhone] = await Promise.all([
+    searchBookings({ ...scope, reservationNo: term, pageSize: LOOKUP_PAGE_SIZE }),
+    searchBookings({ ...scope, bookingPhone: term, pageSize: LOOKUP_PAGE_SIZE }),
+  ]);
+  const merged = new Map<number, ReservationBooking>();
+  for (const booking of [...byCode.items, ...byPhone.items]) merged.set(booking.globalId, booking);
+  return Array.from(merged.values());
+}
+
+/**
  * The reservationNos of a day's bookings that sit in any of `statuses`.
  *
  * Answers "has this guest already sat down / left?" without pulling the day's

@@ -202,3 +202,35 @@ export const LockIcon = (p: IconProps) => (
     <path d="M8 10.5V7.5a4 4 0 0 1 8 0v3" />
   </Icon>
 );
+
+export const MinusIcon = (p: IconProps) => (
+  <Icon {...p}>
+    <path d="M5 12h14" />
+  </Icon>
+);
+
+/** Drops a line from a pre-order — "Bỏ món". */
+export const TrashIcon = (p: IconProps) => (
+  <Icon {...p}>
+    <path d="M4 6.5h16M9.5 6.5V4.8A.8.8 0 0 1 10.3 4h3.4a.8.8 0 0 1 .8.8v1.7" />
+    <path d="M6.5 6.5 7.4 19a1 1 0 0 0 1 .9h7.2a1 1 0 0 0 1-.9l.9-12.5" />
+    <path d="M10.5 10v6M13.5 10v6" />
+  </Icon>
+);
+
+/** Opens the pre-order line editor. */
+export const PencilIcon = (p: IconProps) => (
+  <Icon {...p}>
+    <path d="M4 16.5 16.1 4.4a2 2 0 0 1 2.8 0l.7.7a2 2 0 0 1 0 2.8L7.5 20H4z" />
+    <path d="m14.5 6 3.5 3.5" />
+  </Icon>
+);
+
+/** Money owed back to the guest — the banner nobody may scroll past. */
+export const RefundIcon = (p: IconProps) => (
+  <Icon {...p}>
+    <path d="M3.5 9.5A8.5 8.5 0 1 1 4 15" />
+    <path d="M3.5 4.5v5h5" />
+    <path d="M12 8.5v7M10 10.7h4M10 13.3h4" />
+  </Icon>
+);

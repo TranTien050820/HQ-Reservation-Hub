@@ -1,19 +1,30 @@
 import { useEffect, useState } from 'react';
 import { useTranslation } from 'react-i18next';
 import { useStore } from '../store/StoreContext';
+import { useAuth } from '../store/AuthContext';
+import { useReservationPreOrders } from '../hooks/usePreOrders';
 import { BOOKING_STATUS_CONFIG, BookingStatus, ExtraFieldType, type PreOrder, type ReservationBooking } from '../types';
 import { getEffectiveStatus, seatedAtMs } from '../utils/bookingStatus';
 import { formatVnHHmm } from '../utils/date';
 import { formatDuration } from '../utils/duration';
 import { PreOrderPanel } from './PreOrderPanel';
+import { PreOrderEditModal } from './PreOrderEditModal';
 
 /** The sitting timer moves on its own — a panel left open must not freeze at "45 phút". */
 const TICK_MS = 30_000;
 
 interface BookingDetailModalProps {
   booking: ReservationBooking | null;
-  /** Food this guest ordered ahead, if any — still parked, not yet at the kitchen. */
+  /**
+   * Food this guest ordered ahead, as the caller's list already knows it. Shown at once and
+   * then replaced by the per-booking read (`H-04`), so opening a card never blanks the panel
+   * while a request is out.
+   */
   preOrders?: PreOrder[];
+  /** Bumped by the caller after a Release or Cancel, to force the per-booking re-read. */
+  preOrdersRefreshTick?: number;
+  /** Called after a pre-order edit lands, so the caller's own list stops being stale. */
+  onPreOrdersChanged?: () => void;
   /** Provided only when the booking can actually be released (seated, with a table). */
   onRelease?: () => void;
   releasing?: boolean;
@@ -39,6 +50,8 @@ function SectionLabel({ children }: { children: React.ReactNode }) {
 export function BookingDetailModal({
   booking,
   preOrders = [],
+  preOrdersRefreshTick = 0,
+  onPreOrdersChanged,
   onRelease,
   releasing,
   onCancelPreOrders,
@@ -46,7 +59,19 @@ export function BookingDetailModal({
   onClose,
 }: BookingDetailModalProps) {
   const { t } = useTranslation();
-  const { linkInfo } = useStore();
+  const { linkInfo, storeName } = useStore();
+  const { user, canEditPreOrders } = useAuth();
+  /** The order whose lines are being edited — one at a time, since `A-29` is per order. */
+  const [editingOrder, setEditingOrder] = useState<PreOrder | null>(null);
+
+  // One call for this booking instead of the store-wide sweep the list behind us used, so
+  // the panel here can never be missing an order that sweep happened to page past.
+  const { preOrders: bookingPreOrders, reloadPreOrders } = useReservationPreOrders(
+    booking?.reservationNo,
+    linkInfo,
+    preOrders,
+    preOrdersRefreshTick,
+  );
 
   // Keyed off "is a panel open", not off the booking object: the floor plan hands
   // in a fresh object on every poll, and restarting the timer each time would stop
@@ -58,6 +83,14 @@ export function BookingDetailModal({
     const id = window.setInterval(() => setNow(Date.now()), TICK_MS);
     return () => window.clearInterval(id);
   }, [isOpen]);
+
+  // This component stays mounted between guests — it only stops *rendering*. An editor left
+  // open on the way out would otherwise reappear over the next booking's card, pointed at
+  // the previous guest's order.
+  const bookingKey = booking?.globalId ?? null;
+  useEffect(() => {
+    setEditingOrder(null);
+  }, [bookingKey]);
 
   if (!booking) return null;
 
@@ -101,6 +134,9 @@ export function BookingDetailModal({
         <div className="min-h-0 flex-1 overflow-y-auto pr-1">
         <div className="divide-y divide-[var(--line-soft)]">
           <Row label={t('seating.reservationCode')} value={booking.reservationNo} />
+          {/* Which outlet this slip belongs to. A hostess covering several units of the same
+              chain from one terminal otherwise calls the neighbour's guest. */}
+          {storeName && <Row label={t('booking.outlet')} value={storeName} />}
           <Row label={t('booking.name')} value={booking.bookingName} />
           <Row label={t('booking.phone')} value={booking.bookingPhone} />
           {booking.bookingEmail && <Row label={t('common.email')} value={booking.bookingEmail} />}
@@ -156,7 +192,8 @@ export function BookingDetailModal({
         </div>
 
           <PreOrderPanel
-            preOrders={preOrders}
+            preOrders={bookingPreOrders}
+            onEditOrder={canEditPreOrders ? setEditingOrder : undefined}
             onRelease={onRelease}
             releasing={releasing}
             onCancel={onCancelPreOrders}
@@ -189,6 +226,19 @@ export function BookingDetailModal({
           {t('common.close')}
         </button>
       </div>
+
+      {editingOrder && booking.reservationNo && (
+        <PreOrderEditModal
+          order={editingOrder}
+          reservationNo={String(booking.reservationNo)}
+          empNum={user?.userId}
+          onEdited={() => {
+            reloadPreOrders();
+            onPreOrdersChanged?.();
+          }}
+          onClose={() => setEditingOrder(null)}
+        />
+      )}
     </div>
   );
 }

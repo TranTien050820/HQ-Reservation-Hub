@@ -503,6 +503,40 @@ export interface PreOrder {
   items?: PreOrderItem[] | null;
 }
 
+/**
+ * One change the hostess asks for on a pre-order line (`A-29`).
+ *
+ * `remove` drops the line; `qty` lowers it. There is deliberately no "add" and no way to
+ * raise a quantity — more food means more money to collect, and collecting it is not
+ * something this screen can do. The server rejects both, so the UI never offers them.
+ */
+export interface PreOrderLineChange {
+  lineNo: number;
+  action: 'remove' | 'qty';
+  /** The NEW quantity, only for `qty`, and strictly lower than the current one. */
+  qty?: number;
+  reason?: string;
+}
+
+/** A coupon the edit knocked out — e.g. the order no longer meets its minimum. */
+export interface PreOrderCouponWarning {
+  code?: string | null;
+  reason?: string | null;
+}
+
+/** Response of POST api/OrderHub/Reservation/{no}/Orders/{uid}/Lines. */
+export interface EditPreOrderResult {
+  orderUid: string;
+  reservationNo?: string | null;
+  grandTotal: number;
+  /**
+   * What the guest is owed back. **Nothing refunds it automatically** — the deposit policy
+   * is the store's call, so this is a number to hand to the shift manager, not a receipt.
+   */
+  refundDue: number;
+  couponWarnings: PreOrderCouponWarning[];
+}
+
 /** Result of POST api/OrderHub/Reservation/{no}/Release (ReservationReleaseQueryDTO). */
 export interface ReservationReleaseResult {
   reservationNo: string;
@@ -535,6 +569,43 @@ export interface AuthRole {
   roleName: string;
   category: string;
   subCategory: string;
+  /**
+   * Per-row verbs from `UserRole`. Holding the row is not the same as being allowed to
+   * write through it — a read-only account still carries the row with `canUpdate = 0`.
+   */
+  canView?: number | null;
+  canCreate?: number | null;
+  canUpdate?: number | null;
+  canDelete?: number | null;
+}
+
+/**
+ * The `UserRole` row that lets a hostess change food a guest already paid for
+ * (`SqlReport/OrderHubV2-UserRoles.sql`). Ordinary hostesses are view-only, which is why
+ * this is its own row rather than part of the general reservation permission.
+ */
+export const PREORDER_EDIT_ROLE = 'Reservation PreOrder Edit';
+
+/** The catch-all row an admin group carries instead of the individual ones. */
+const WILDCARD_ROLE = 'All';
+
+/**
+ * Whether these roles may edit a pre-order.
+ *
+ * Fails CLOSED: an account whose roles were never stored (a session that predates roles
+ * being kept, or a refresh that came back without them) reads as "not allowed" rather than
+ * as "unknown, allow it". The action moves money a guest has already handed over, so the
+ * cost of a wrong "yes" is not symmetrical with the cost of a wrong "no" — and the fix for
+ * a wrong "no" is one log-in.
+ */
+export function canEditPreOrders(roles: AuthRole[] | null | undefined): boolean {
+  return (roles ?? []).some((role) => {
+    const named =
+      role.roleName?.trim().toLowerCase() === PREORDER_EDIT_ROLE.toLowerCase() ||
+      role.roleName?.trim().toLowerCase() === WILDCARD_ROLE.toLowerCase() ||
+      role.category?.trim().toLowerCase() === WILDCARD_ROLE.toLowerCase();
+    return named && role.canUpdate !== 0;
+  });
 }
 
 export interface AuthSite {
@@ -557,6 +628,16 @@ export interface LinkInfo {
   sNum: number;
   statNum: number;
   channelId?: number;
+  /**
+   * Which outlet this link belongs to, for the booking slip (STT 9).
+   *
+   * Comes from the link config's own `settings.storeName` when the store filled it in;
+   * `StoreContext` backfills it from `GET api/StoreInfo` when it did not. Still optional
+   * because both sources can be blank, and a slip without an outlet line beats a slip
+   * that refuses to open.
+   */
+  storeName?: string | null;
+  address?: string | null;
   zones: ReservationZone[];
   tableSetups: TableSetup[];
   sections: Section[];
