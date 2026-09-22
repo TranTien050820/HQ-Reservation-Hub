@@ -313,6 +313,8 @@ export interface CreateReservationBookingRequest {
 
 export type UpdateReservationBookingRequest = Partial<Omit<CreateReservationBookingRequest, 'userCreated'>> & {
   globalId: number;
+  /** userId of the hostess confirming a New booking — sent with `status: Confirm`. */
+  userConfirm?: number;
 };
 
 export interface ReservationBookingFilters extends Partial<SiteScope> {

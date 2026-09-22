@@ -2,6 +2,7 @@ import { useCallback, useEffect, useState, type ComponentType } from 'react';
 import { useTranslation } from 'react-i18next';
 import { useNavigate } from 'react-router-dom';
 import { useStore } from '../store/StoreContext';
+import { useAuth } from '../store/AuthContext';
 import { useToast } from '../components/ToastProvider';
 import { Spinner } from '../components/Spinner';
 import { QrScannerModal } from '../components/QrScannerModal';
@@ -18,7 +19,7 @@ import {
   SearchIcon,
   UsersIcon,
 } from '../components/icons';
-import { lookupBookingsAnyDate, searchBookings } from '../api/bookings';
+import { lookupBookingsAnyDate, searchBookings, updateBooking } from '../api/bookings';
 import { fetchAvailableSlots } from '../api/availableSlots';
 import { fetchWaitlists } from '../api/waitlists';
 import { usePreOrders } from '../hooks/usePreOrders';
@@ -58,8 +59,10 @@ export function CheckinScreen() {
   const navigate = useNavigate();
   const toast = useToast();
   const { linkInfo } = useStore();
+  const { user } = useAuth();
   const [query, setQuery] = useState('');
   const [isSearching, setIsSearching] = useState(false);
+  const [isConfirming, setIsConfirming] = useState(false);
   const [searched, setSearched] = useState(false);
   const [results, setResults] = useState<ReservationBooking[]>([]);
   const [qrOpen, setQrOpen] = useState(false);
@@ -174,6 +177,31 @@ export function CheckinScreen() {
     [navigate],
   );
 
+  /** The backend refuses New → Seated/Reserved (BOOKING_CONFIRM_REQUIRED), so "seat anyway" confirms first. */
+  const confirmAndSeat = useCallback(
+    async (booking: ReservationBooking) => {
+      if (!linkInfo) return;
+      setIsConfirming(true);
+      try {
+        await updateBooking({
+          globalId: booking.globalId,
+          siteId: linkInfo.siteId,
+          sNum: linkInfo.sNum,
+          statNum: linkInfo.statNum,
+          status: BookingStatus.Confirm,
+          userConfirm: user?.userId,
+        });
+        openSeating({ ...booking, status: BookingStatus.Confirm });
+      } catch (err) {
+        // A full zone or a booking changed elsewhere — say what the backend said.
+        toast.error(apiErrorMessage(err, t('checkin.confirmError')));
+      } finally {
+        setIsConfirming(false);
+      }
+    },
+    [linkInfo, user, openSeating, toast, t],
+  );
+
   /**
    * New(1) means the store never confirmed this reservation — it may be a duplicate,
    * an unpaid deposit, or a slot nobody ever agreed to hold. Seating is still the
@@ -278,7 +306,7 @@ export function CheckinScreen() {
           </button>
         </div>
 
-        {isSearching && <Spinner label={t('common.loading')} />}
+        {(isSearching || isConfirming) && <Spinner label={t('common.loading')} />}
 
         {!isSearching && searched && results.length === 0 && (
           <div className="note note-warn mx-auto mt-4 max-w-[620px] p-3.5 text-left">
@@ -419,12 +447,12 @@ export function CheckinScreen() {
           name: unconfirmed?.bookingName ?? '',
           code: unconfirmed?.reservationNo ?? '',
         })}
-        confirmLabel={t('common.yes')}
+        confirmLabel={t('checkin.confirmAndSeat')}
         cancelLabel={t('common.no')}
         onConfirm={() => {
           const booking = unconfirmed;
           setUnconfirmed(null);
-          if (booking) openSeating(booking);
+          if (booking) void confirmAndSeat(booking);
         }}
         onCancel={() => setUnconfirmed(null)}
       />

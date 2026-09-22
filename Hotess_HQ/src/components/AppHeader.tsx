@@ -75,7 +75,7 @@ export function AppHeader() {
         <div className="flex shrink-0 items-center gap-3">
           <span className="brand-mark" role="img" aria-label="SpeedUP" />
           <span className="hidden text-[17px] font-bold leading-none tracking-tight text-ink sm:block">
-            Hotess<span className="text-brand">Reservation</span>
+            Hostess<span className="text-brand">Reservation</span>
           </span>
         </div>
 
