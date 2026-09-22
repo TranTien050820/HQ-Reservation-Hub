@@ -286,5 +286,16 @@
   "checkin.missTitle": "Có đặt chỗ khớp, nhưng không dùng được cho hôm nay:",
   "checkin.missOtherDate": "Đặt cho ngày {{when}}",
   "checkin.missMore": "và {{count}} đặt chỗ khác",
-  "checkin.missClosed": "Đã huỷ / đã đóng · {{when}}"
+  "checkin.missClosed": "Đã huỷ / đã đóng · {{when}}",
+  "seating.refusedOtherRestaurant": "Bàn {{tables}} thuộc nhà hàng khác — vui lòng chọn bàn trong khu vực này.",
+  "seating.refusedTableUnassigned": "Bàn {{tables}} chưa được gán cho nhà hàng nào trên POS — vui lòng chọn bàn khác, hoặc báo quản lý gán khu của bàn trên POS.",
+  "seating.refusedTableUnknown": "Bàn {{tables}} không có trong danh sách bàn của nhà hàng — vui lòng chọn bàn khác.",
+  "seating.refusedStationUnassigned": "Station của liên kết này chưa được gán nhà hàng (RevCenter) trên POS nên không xếp được bàn. Báo quản lý gán RevCenter trên POS.",
+  "seating.refusedTable": "Bàn {{tables}} không dùng được cho nhà hàng này — vui lòng chọn bàn khác.",
+  "seating.ownTableOutsideZone": "Bàn {{tables}} đang giữ cho khách này không thuộc khu vực này nên không được chọn sẵn — vui lòng chọn bàn ở đây.",
+  "seating.outsideZoneBlocked": "Bàn {{tables}} không thuộc khu vực này — vui lòng chọn bàn trong khu vực.",
+  "preorder.listFailed": "Không tải được danh sách món đặt trước — dấu món đặt trước có thể không hiện. Khi xếp bàn, hệ thống vẫn kiểm tra món đặt trước của khách và chuyển xuống bếp.",
+  "preorder.unknownNeedsTable": "Không kiểm tra được món đặt trước. Nếu khách có đặt món trước, hãy xếp bàn để chuyển món xuống bếp.",
+  "preorder.releaseRetryUnknownHint": "Khách đã vào bàn nhưng chưa kiểm tra / chuyển được món đặt trước (nếu có) xuống bếp.",
+  "login.sessionExpired": "Phiên đăng nhập đã hết hạn — vui lòng đăng nhập lại."
 }

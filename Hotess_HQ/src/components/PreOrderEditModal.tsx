@@ -3,7 +3,7 @@ import { useTranslation } from 'react-i18next';
 import { editPreOrderLines } from '../api/orderHub';
 import { apiErrorCode, apiErrorMessage } from '../utils/apiError';
 import { formatVnd } from '../utils/money';
-import type { EditPreOrderResult, PreOrder, PreOrderItem, PreOrderLineChange } from '../types';
+import type { EditPreOrderResult, PreOrder, PreOrderItem, PreOrderLineChange, SiteScope } from '../types';
 import { AlertIcon, CheckCircleIcon, MinusIcon, PlusIcon, RefundIcon, TrashIcon } from './icons';
 
 /** 409 from `A-29`: the order left `scheduled` — usually released from another terminal. */
@@ -13,6 +13,8 @@ interface PreOrderEditModalProps {
   /** Non-null opens the modal. Only ever a `scheduled` order — the caller gates on that. */
   order: PreOrder | null;
   reservationNo: string;
+  /** The booking's station scope (`bookingScope`) — the edit is refused outside it (SPEC-06 R-10). */
+  scope: SiteScope;
   /** Stamped into the order's event log as who made the change. */
   empNum?: number | null;
   /**
@@ -51,6 +53,7 @@ function perUnit(item: PreOrderItem): number {
 export function PreOrderEditModal({
   order,
   reservationNo,
+  scope,
   empNum,
   onEdited,
   onClose,
@@ -143,7 +146,7 @@ export function PreOrderEditModal({
           ? { lineNo: item.lineNo, action: 'remove', reason }
           : { lineNo: item.lineNo, action: 'qty', qty, reason };
       });
-      const edited = await editPreOrderLines(reservationNo, order.orderUid, changes, { empNum, note });
+      const edited = await editPreOrderLines(reservationNo, order.orderUid, changes, scope, { empNum, note });
       setResult(edited);
       // Immediately, not on close: everything behind this modal is now describing an order
       // that no longer exists in that shape.

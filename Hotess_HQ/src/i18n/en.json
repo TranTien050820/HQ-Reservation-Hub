@@ -286,5 +286,16 @@
   "checkin.missTitle": "Matching bookings, none of them usable today:",
   "checkin.missOtherDate": "Booked for {{when}}",
   "checkin.missMore": "and {{count}} more booking(s)",
-  "checkin.missClosed": "Cancelled / closed · {{when}}"
+  "checkin.missClosed": "Cancelled / closed · {{when}}",
+  "seating.refusedOtherRestaurant": "Table {{tables}} belongs to another restaurant — pick a table in this zone.",
+  "seating.refusedTableUnassigned": "Table {{tables}} is not assigned to any restaurant on the POS — pick another table, or ask a manager to assign its section on the POS.",
+  "seating.refusedTableUnknown": "Table {{tables}} is not in this restaurant's table list — pick another table.",
+  "seating.refusedStationUnassigned": "This link's station is not assigned to a restaurant (revenue center) on the POS, so no table can be seated from it. Ask a manager to assign one on the POS.",
+  "seating.refusedTable": "Table {{tables}} cannot be used by this restaurant — pick another table.",
+  "seating.ownTableOutsideZone": "Table {{tables}} held for this guest is not in this zone, so it was not pre-selected — pick a table here.",
+  "seating.outsideZoneBlocked": "Table {{tables}} is not in this zone — pick a table in this zone.",
+  "preorder.listFailed": "Could not load pre-orders — pre-order badges may be missing. Seating still checks this guest's pre-order and sends it to the kitchen once they have a table.",
+  "preorder.unknownNeedsTable": "Could not check for pre-ordered food. If this guest pre-ordered, seat them at a table so it can be sent to the kitchen.",
+  "preorder.releaseRetryUnknownHint": "The guest is seated, but their pre-ordered food (if any) could not be checked or sent to the kitchen.",
+  "login.sessionExpired": "Your session has expired — log in again to continue."
 }

@@ -126,9 +126,11 @@ export default function HomePage() {
           </div>
 
           <div className="grid gap-6 sm:grid-cols-2 lg:grid-cols-3">
-            {recommendations.map((item) => (
+            {recommendations.map((item, index) => (
               <article
-                key={item.globalId}
+                // The config sends no `globalId`, and a StatNum repeats across the Subs of a
+                // site; the position settles a pair the API could not tell apart before R-08.
+                key={`${item.recommendSNum ?? ''}:${item.recommendStatNum}:${index}`}
                 className="group flex flex-col overflow-hidden rounded-2xl border border-neutral-200 bg-white shadow-sm transition-shadow hover:shadow-lg"
               >
                 <div className="flex h-48 items-center justify-center bg-neutral-100 text-sm text-neutral-400">
@@ -138,7 +140,11 @@ export default function HomePage() {
                   <h3 className="text-lg font-bold">
                     {t('home.recommendations.storeFallback', {
                       defaultValue: 'Store #{{id}}',
-                      id: item.recommendStatNum,
+                      // "6-1" once the API sends the Sub (SPEC-06 R-08); the bare StatNum until then.
+                      id:
+                        item.recommendSNum != null
+                          ? `${item.recommendSNum}-${item.recommendStatNum}`
+                          : item.recommendStatNum,
                     })}
                   </h3>
                   <button

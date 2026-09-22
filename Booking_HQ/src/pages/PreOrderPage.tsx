@@ -28,7 +28,12 @@ import {
   OrderHubError,
   type SessionOrders,
 } from '../api/orderHub';
-import { loadPreOrderSession, savePreOrderSession } from '../lib/preorderSession';
+import {
+  choosePreOrderTable,
+  loadPreOrderSession,
+  preOrderTablePool,
+  savePreOrderSession,
+} from '../lib/preorderSession';
 import { formatDateHeadingWithYear, formatMoney, formatTime } from '../lib/i18nFormat';
 import { menuItemPhoto } from '../lib/menuImages';
 import PreOrderProductModal from '../components/PreOrderProductModal';
@@ -144,13 +149,18 @@ export default function PreOrderPage() {
 
   /**
    * The reservation channel never opens a bill, but `POST Session` still insists on a table
-   * and only resumes a session when the same one comes back. Pin the store's lowest
-   * configured table number so every visit lands on the same session key.
+   * and only resumes a session when the same one comes back. Pin the lowest of THIS
+   * restaurant's tables so every visit lands on the same session key — a table in a section
+   * linked to one of its zones, and one the POS assigns to a restaurant (SPEC-06 R-12), not
+   * merely the lowest number the store data happens to carry.
    */
-  const placeholderTableNum = useMemo(() => {
-    const nums = (data?.tableSetups ?? []).map((tb) => tb.tablenum).filter((n) => Number.isFinite(n) && n > 0);
-    return nums.length > 0 ? Math.min(...nums) : 1;
-  }, [data]);
+  const tablePool = useMemo(() => preOrderTablePool(data), [data]);
+  /**
+   * `tablePool` by value, for the session effect below. The pool is rebuilt whenever any part
+   * of the store payload changes (a carousel edit, a refetch on focus), and re-opening the
+   * session for that would flash the whole page over a table choice that did not change.
+   */
+  const tablePoolKey = tablePool.join(',');
 
   const refreshOrders = useCallback(async (activeToken: string) => {
     try {
@@ -170,8 +180,13 @@ export default function PreOrderPage() {
       setLoading(true);
       setBootError(null);
       try {
-        const stored = loadPreOrderSession(reservationNo);
-        const tableNum = stored?.tableNum ?? placeholderTableNum;
+        // A stored table outside this restaurant is dropped, token and all — see
+        // `choosePreOrderTable`. Only one still inside it resumes the guest's cart.
+        const { tableNum, resume } = choosePreOrderTable(
+          tablePool,
+          loadPreOrderSession(reservationNo),
+          linkInfo,
+        );
         const opened = await openSession(
           {
             siteId: linkInfo.siteId,
@@ -180,7 +195,7 @@ export default function PreOrderPage() {
             tableNum,
             lang: i18n.language,
           },
-          stored?.token,
+          resume?.token,
         );
         if (cancelled) return;
         setSession(opened);
@@ -213,9 +228,10 @@ export default function PreOrderPage() {
     };
     // Neither `i18n.language` nor `t` belongs here — `t`'s identity changes with the
     // language, and re-running this effect would re-open the session and lose the cart
-    // mid-order. The menu, the only language-dependent part, is reloaded below.
+    // mid-order. The menu, the only language-dependent part, is reloaded below. Same for
+    // `tablePool`: it is read here, but only a change of its VALUE (`tablePoolKey`) may re-run this.
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [data?.linkInfo, reservationNo, placeholderTableNum, refreshOrders]);
+  }, [data?.linkInfo, reservationNo, tablePoolKey, refreshOrders]);
 
   // A language switch reloads only the menu: the cart lives server-side keyed on the
   // session, so re-opening that session would be a far bigger hammer than the job needs.

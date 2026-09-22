@@ -3,6 +3,7 @@ import { useTranslation } from 'react-i18next';
 import { useStore } from '../store/StoreContext';
 import { useAuth } from '../store/AuthContext';
 import { useReservationPreOrders } from '../hooks/usePreOrders';
+import { bookingScope } from '../api/orderHub';
 import { BOOKING_STATUS_CONFIG, BookingStatus, ExtraFieldType, type PreOrder, type ReservationBooking } from '../types';
 import { getEffectiveStatus, seatedAtMs } from '../utils/bookingStatus';
 import { formatVnHHmm } from '../utils/date';
@@ -64,11 +65,14 @@ export function BookingDetailModal({
   /** The order whose lines are being edited — one at a time, since `A-29` is per order. */
   const [editingOrder, setEditingOrder] = useState<PreOrder | null>(null);
 
+  /** The booking's own station, not the link's — which pre-orders are its is the booking's call. */
+  const preOrderScope = linkInfo ? bookingScope(booking, linkInfo) : null;
+
   // One call for this booking instead of the store-wide sweep the list behind us used, so
   // the panel here can never be missing an order that sweep happened to page past.
   const { preOrders: bookingPreOrders, reloadPreOrders } = useReservationPreOrders(
     booking?.reservationNo,
-    linkInfo,
+    preOrderScope,
     preOrders,
     preOrdersRefreshTick,
   );
@@ -227,10 +231,11 @@ export function BookingDetailModal({
         </button>
       </div>
 
-      {editingOrder && booking.reservationNo && (
+      {editingOrder && booking.reservationNo && preOrderScope && (
         <PreOrderEditModal
           order={editingOrder}
           reservationNo={String(booking.reservationNo)}
+          scope={preOrderScope}
           empNum={user?.userId}
           onEdited={() => {
             reloadPreOrders();

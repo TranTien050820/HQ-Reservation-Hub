@@ -190,11 +190,11 @@
   },
   "myBookings": {
     "title": "我的预订",
-    "subtitle": "使用预订时填写的电话号码查询您的预订记录。",
+    "subtitle": "使用预订时填写的电话号码查询您在本餐厅的预订记录。",
     "phonePlaceholder": "(555) 123-4567",
     "search": "搜索",
     "searching": "正在搜索…",
-    "noResults": "未找到该电话号码对应的预订记录。",
+    "noResults": "未找到该电话号码在本餐厅的预订记录。",
     "guests": "位",
     "reservationNo": "预订编号",
     "cancel": "取消",

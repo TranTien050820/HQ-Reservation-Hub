@@ -6,7 +6,7 @@ import { apiErrorMessage } from '../utils/apiError';
 
 export function LoginPage() {
   const { t } = useTranslation();
-  const { login, isLoading } = useAuth();
+  const { login, isLoading, sessionExpired } = useAuth();
   const toast = useToast();
   const [userName, setUserName] = useState('');
   const [password, setPassword] = useState('');
@@ -33,6 +33,8 @@ export function LoginPage() {
           <span className="brand-mark mb-4 h-[54px] w-[118px]" role="img" aria-label="SpeedUP" />
           <h1 className="text-xl font-bold text-ink">{t('login.title')}</h1>
         </div>
+        {/* Thrown back here by a refused refresh, not by her own "Đăng xuất" — say which. */}
+        {sessionExpired && <p className="note note-warn mb-4 text-sm">{t('login.sessionExpired')}</p>}
         <label className="field-label">{t('login.username')}</label>
         <input
           className="field touch-btn mb-4 px-4"

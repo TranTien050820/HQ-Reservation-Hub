@@ -89,19 +89,31 @@ export async function fetchMenuItems(siteId: number, sNum: number): Promise<Menu
   return delay(MOCK_MENU_ITEMS.filter((i) => i.siteId === siteId && i.sNum === sNum));
 }
 
-/** GET /api/ReservationBookings?BookingPhone=... — a phone's reservations, on the real HQ-WebOffice-API. */
+/**
+ * GET /api/ReservationBookings?BookingPhone=... — a phone's reservations, on the real HQ-WebOffice-API.
+ *
+ * Scoped to the link's own station (`StatNum`), not just its Sub (SPEC-06 R-13). One Sub runs
+ * several restaurants, and a Sub-wide lookup listed the guest's bookings at every one of them
+ * — each with this page's Pre-order and Cancel buttons, so a guest could order food against
+ * another restaurant's booking through this restaurant's menu. `StatNum` is an exact filter
+ * the API already honours; the check below repeats it so a server that ever stops filtering
+ * this anonymous lookup cannot bring those rows back.
+ */
 export async function fetchBookingsByPhone(
   phone: string,
   siteId?: number,
   sNum?: number,
+  statNum?: number,
 ): Promise<ReservationBooking[]> {
   const { data } = await http.get<ApiEnvelope<PaginatedResult<ReservationBooking>>>('/api/ReservationBookings', {
-    params: { BookingPhone: phone, SiteId: siteId, SNum: sNum, pageIndex: 1, pageSize: 100 },
+    params: { BookingPhone: phone, SiteId: siteId, SNum: sNum, StatNum: statNum, pageIndex: 1, pageSize: 100 },
   });
   if (data.status !== 200) {
     throw new Error(data.message || 'Failed to load reservations');
   }
-  return [...data.data.items].sort((a, b) => (b.reservationDate ?? '').localeCompare(a.reservationDate ?? ''));
+  return data.data.items
+    .filter((booking) => statNum == null || booking.statNum == null || booking.statNum === statNum)
+    .sort((a, b) => (b.reservationDate ?? '').localeCompare(a.reservationDate ?? ''));
 }
 
 /** POST /api/ReservationBookings — creates a reservation on the real HQ-WebOffice-API. */

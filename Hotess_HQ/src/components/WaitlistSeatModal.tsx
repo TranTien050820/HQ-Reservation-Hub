@@ -13,7 +13,7 @@ import { searchBookings } from '../api/bookings';
 import { fetchAllPages } from '../api/paginate';
 import { updateWaitlist } from '../api/waitlists';
 import { usePosOpenTables } from '../hooks/usePosOpenTables';
-import { apiErrorMessage } from '../utils/apiError';
+import { apiErrorMessage, tableRefusalMessage, tableRefusalOf } from '../utils/apiError';
 import { buildTableOccupancy, isTableBlocked, isTableReservable } from '../utils/tableOccupancy';
 import { isExcessCapacity, suggestTables } from '../utils/tableSuggestion';
 import { computeSeatWindow, isBeyondCurrentUse, toMinutes } from '../utils/timeWindow';
@@ -44,7 +44,17 @@ export function WaitlistSeatModal({ entry, onClose, onSeated }: WaitlistSeatModa
   const { user } = useAuth();
 
   const zones = useMemo(() => linkInfo?.zones ?? [], [linkInfo]);
-  const allTables = useMemo(() => linkInfo?.tableSetups ?? [], [linkInfo]);
+  /**
+   * Tables the server refused for this restaurant while the picker was open
+   * (`TABLE_NOT_IN_RESTAURANT` — final, SPEC-06 §4.10). Folded in as `canreserve = 0`, the
+   * same way the seating screen does it: greyed out, never suggested, never sent again.
+   */
+  const [refusedTablenums, setRefusedTablenums] = useState<ReadonlySet<number>>(() => new Set());
+  const allTables = useMemo(() => {
+    const setups = linkInfo?.tableSetups ?? [];
+    if (refusedTablenums.size === 0) return setups;
+    return setups.map((tb) => (refusedTablenums.has(tb.tablenum) ? { ...tb, canreserve: 0 } : tb));
+  }, [linkInfo, refusedTablenums]);
   const sections = useMemo(() => linkInfo?.sections ?? [], [linkInfo]);
   const zoneSectionLinks = useMemo(() => linkInfo?.zoneSectionLinks ?? [], [linkInfo]);
 
@@ -266,13 +276,36 @@ export function WaitlistSeatModal({ entry, onClose, onSeated }: WaitlistSeatModa
       });
       onSeated(tablenums);
     } catch (err) {
-      // ReservationWaitlists refuses with a reason (missing required field, slot gone,
-      // entry already settled) — passing it straight through beats a generic line.
-      toast.error(apiErrorMessage(err, t('seating.seatError')));
+      const refusal = tableRefusalOf(err);
+      if (refusal) {
+        // A table this restaurant may not use. Final — strike it out of the picker rather than
+        // let the next tap earn the same 403. An unassigned station refuses every table, so
+        // there is no single one to strike.
+        const picked = Array.from(selectedTablenums);
+        toast.error(tableRefusalMessage(refusal, t, picked));
+        const refusedNum = refusal.tableNum;
+        if (refusal.reason !== 'STATION_UNASSIGNED') {
+          if (refusedNum != null) setRefusedTablenums((prev) => new Set([...prev, refusedNum]));
+          else setSelectedTablenums(new Set());
+        }
+      } else {
+        // ReservationWaitlists refuses with a reason (missing required field, slot gone,
+        // entry already settled) — passing it straight through beats a generic line.
+        toast.error(apiErrorMessage(err, t('seating.seatError')));
+      }
     } finally {
       setSubmitting(false);
     }
   };
+
+  // A table struck out above may still be in the pick (the refusal named one of several) —
+  // drop it the same way the seating screen drops a table retired while it is open.
+  useEffect(() => {
+    setSelectedTablenums((prev) => {
+      const kept = Array.from(prev).filter((n) => !refusedTablenums.has(n));
+      return kept.length === prev.size ? prev : new Set(kept);
+    });
+  }, [refusedTablenums]);
 
 
   return (

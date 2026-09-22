@@ -198,11 +198,11 @@
   },
   "myBookings": {
     "title": "My reservations",
-    "subtitle": "Look up your bookings using the phone number you reserved with.",
+    "subtitle": "Look up your bookings at this restaurant using the phone number you reserved with.",
     "phonePlaceholder": "(555) 123-4567",
     "search": "Search",
     "searching": "Searching…",
-    "noResults": "No reservations found for that phone number.",
+    "noResults": "No reservations at this restaurant for that phone number.",
     "guests": "guests",
     "reservationNo": "Reservation No.",
     "cancel": "Cancel",

@@ -10,18 +10,22 @@ const EMPTY: PreOrder[] = [];
  * Fails open on purpose: a store that never turned OrderHub on — or an OrderHub that is
  * momentarily down — must not stop the hostess from seating guests. When the read fails the
  * map is empty and `failed` is set, so screens can say "pre-orders unknown" instead of
- * implying nobody ordered ahead.
+ * implying nobody ordered ahead — and so nothing treats "unknown" as "none" and skips a
+ * Release on the strength of it (SPEC-06 R-14).
+ *
+ * `scope` is the link's full station scope: one Sub serves several restaurants, and a list
+ * scoped only to `sNum` carries every one of them (SPEC-06 R-10).
  */
-export function usePreOrders(scope: Pick<SiteScope, 'siteId' | 'sNum'> | null | undefined) {
-  const { siteId, sNum } = scope ?? {};
+export function usePreOrders(scope: SiteScope | null | undefined) {
+  const { siteId, sNum, statNum } = scope ?? {};
   const [byReservation, setByReservation] = useState<Map<string, PreOrder[]>>(() => new Map());
   const [failed, setFailed] = useState(false);
   const [truncated, setTruncated] = useState(false);
 
   const reload = useCallback(async () => {
-    if (siteId == null || sNum == null) return;
+    if (siteId == null || sNum == null || statNum == null) return;
     try {
-      const result = await fetchPreOrdersByReservation({ siteId, sNum });
+      const result = await fetchPreOrdersByReservation({ siteId, sNum, statNum });
       setByReservation(result.byReservation);
       setTruncated(result.truncated);
       setFailed(false);
@@ -30,7 +34,7 @@ export function usePreOrders(scope: Pick<SiteScope, 'siteId' | 'sNum'> | null | 
       setTruncated(false);
       setFailed(true);
     }
-  }, [siteId, sNum]);
+  }, [siteId, sNum, statNum]);
 
   useEffect(() => {
     reload();
@@ -62,15 +66,17 @@ export function usePreOrders(scope: Pick<SiteScope, 'siteId' | 'sNum'> | null | 
  * `fallback` is the list-derived set the caller already had. It stays on screen while the
  * fresh read is in flight and if that read fails, so opening a booking card never blanks a
  * panel that was showing the guest's food a moment ago.
+ *
+ * `scope` is the BOOKING's (`bookingScope` in `api/orderHub.ts`), not the link's.
  */
 export function useReservationPreOrders(
   reservationNo: string | null | undefined,
-  scope: Pick<SiteScope, 'siteId' | 'sNum'> | null | undefined,
+  scope: SiteScope | null | undefined,
   fallback: PreOrder[],
   /** Bumped by the caller after Release/Cancel so this re-reads instead of showing the old set. */
   refreshTick = 0,
 ) {
-  const { siteId, sNum } = scope ?? {};
+  const { siteId, sNum, statNum } = scope ?? {};
   /**
    * The result is stored WITH the booking it belongs to.
    *
@@ -86,10 +92,10 @@ export function useReservationPreOrders(
   const key = reservationNo ? String(reservationNo) : null;
 
   useEffect(() => {
-    if (!key || siteId == null || sNum == null) return;
+    if (!key || siteId == null || sNum == null || statNum == null) return;
     let cancelled = false;
     setLoading(true);
-    fetchPreOrdersForReservation(key, { siteId, sNum })
+    fetchPreOrdersForReservation(key, { siteId, sNum, statNum })
       .then((orders) => {
         if (!cancelled) setFetched({ reservationNo: key, orders });
       })
@@ -104,7 +110,7 @@ export function useReservationPreOrders(
     return () => {
       cancelled = true;
     };
-  }, [key, siteId, sNum, refreshTick, tick]);
+  }, [key, siteId, sNum, statNum, refreshTick, tick]);
 
   const current = fetched?.reservationNo === key ? fetched.orders : null;
 

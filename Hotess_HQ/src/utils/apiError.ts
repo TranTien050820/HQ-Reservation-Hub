@@ -68,6 +68,69 @@ export function apiErrorCode(error: unknown): string | null {
   return textFrom(body?.errorCode) ?? textFrom(body?.data?.code);
 }
 
+/**
+ * The `data` object of a refusal, when it came with one — `CodedException` flattens its extra
+ * fields beside `code` (`{ code, tableNum, reason, … }`), which is where the specifics live.
+ */
+export function apiErrorData(error: unknown): Record<string, unknown> | null {
+  if (!axios.isAxiosError(error)) return null;
+  const data = (error.response?.data as { data?: unknown } | undefined)?.data;
+  return data && typeof data === 'object' && !Array.isArray(data) ? (data as Record<string, unknown>) : null;
+}
+
+/**
+ * SPEC-06 §4.10 — HTTP 403 when a seating names a table the station's restaurant may not use
+ * (`PUT ReservationBookings` with seat rows, `PUT ReservationWaitlists` → Reserved,
+ * `ReserSeatTables`). A FINAL answer: the same table will be refused every time, so it is
+ * never retried. Only sent once the API runs restaurant isolation in Enforce mode — in
+ * Off/Warn the same seating simply goes through.
+ */
+export const TABLE_NOT_IN_RESTAURANT = 'TABLE_NOT_IN_RESTAURANT';
+
+export interface TableRefusal {
+  /** The table the server refused, when it named one. */
+  tableNum: number | null;
+  /** `OTHER_RESTAURANT` | `TABLE_UNASSIGNED` | `STATION_UNASSIGNED` | `TABLE_UNKNOWN`, or null. */
+  reason: string | null;
+}
+
+/** The refusal behind `error` when it is a `TABLE_NOT_IN_RESTAURANT`, null for anything else. */
+export function tableRefusalOf(error: unknown): TableRefusal | null {
+  if (apiErrorCode(error) !== TABLE_NOT_IN_RESTAURANT) return null;
+  const data = apiErrorData(error);
+  const tableNum = Number(data?.tableNum);
+  return {
+    tableNum: Number.isFinite(tableNum) && tableNum > 0 ? tableNum : null,
+    reason: textFrom(data?.reason),
+  };
+}
+
+/** Minimal shape of i18next's `t`, so this stays a plain function callers can use anywhere. */
+type Translate = (key: string, options?: Record<string, unknown>) => string;
+
+const TABLE_REFUSAL_KEYS: Record<string, string> = {
+  OTHER_RESTAURANT: 'seating.refusedOtherRestaurant',
+  TABLE_UNASSIGNED: 'seating.refusedTableUnassigned',
+  TABLE_UNKNOWN: 'seating.refusedTableUnknown',
+};
+
+/**
+ * What the hostess can do about a refused table, in her language.
+ *
+ * Localized rather than the server's sentence because the reason decides the next step:
+ * another restaurant's table means "pick one of ours", an unassigned section or station means
+ * "this is fixed on the POS, not here". `pickedTablenums` names the tables when the server did
+ * not say which one it refused.
+ */
+export function tableRefusalMessage(refusal: TableRefusal, t: Translate, pickedTablenums: number[]): string {
+  // The station itself belongs to no restaurant, so every table is refused — naming one
+  // would send the hostess hunting for a better table that does not exist.
+  if (refusal.reason === 'STATION_UNASSIGNED') return t('seating.refusedStationUnassigned');
+  const nums = refusal.tableNum != null ? [refusal.tableNum] : pickedTablenums;
+  const key = TABLE_REFUSAL_KEYS[refusal.reason ?? ''] ?? 'seating.refusedTable';
+  return t(key, { tables: nums.map((n) => `#${n}`).join(', ') });
+}
+
 /** `fallback` is the caller's localized "something went wrong" line, used only when the failure says nothing. */
 export function apiErrorMessage(error: unknown, fallback: string): string {
   if (axios.isAxiosError(error)) {

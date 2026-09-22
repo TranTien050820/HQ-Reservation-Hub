@@ -1,6 +1,6 @@
-import { createContext, useContext, useState, type ReactNode } from 'react';
+import { createContext, useContext, useEffect, useState, type ReactNode } from 'react';
 import { login as loginApi } from '../api/auth';
-import { getTokens, setTokens, clearTokens } from './tokenStorage';
+import { getTokens, setTokens, clearTokens, onSessionExpired } from './tokenStorage';
 import { canEditPreOrders, type AuthRole, type AuthUser } from '../types';
 
 const USER_KEY = 'hotess.user';
@@ -18,6 +18,12 @@ interface AuthContextValue {
   isAuthenticated: boolean;
   isLoading: boolean;
   error: string | null;
+  /**
+   * True once the session ended under the hostess — the refresh token was refused — rather
+   * than by her tapping "Đăng xuất". The login screen says so, so being thrown back to it
+   * mid-service reads as "log in again", not as the app crashing. Cleared by the next login.
+   */
+  sessionExpired: boolean;
   login: (userName: string, password: string) => Promise<void>;
   logout: () => void;
 }
@@ -49,6 +55,29 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   );
   const [isLoading, setIsLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [sessionExpired, setSessionExpired] = useState(false);
+
+  /**
+   * The HTTP layer gave up on the session (refresh refused, or tokens gone): log out for real
+   * (SPEC-06 R-14). Before this, storage was wiped but `user` stayed set, so the app kept
+   * drawing a logged-in hostess whose every request went out without a token.
+   *
+   * The stored user record is what tells a session that ended from a 401 on the login form
+   * itself — only the former gets the "session expired" line under the password box.
+   */
+  useEffect(
+    () =>
+      onSessionExpired(() => {
+        const hadSession = localStorage.getItem(USER_KEY) != null;
+        clearTokens();
+        localStorage.removeItem(USER_KEY);
+        localStorage.removeItem(ROLES_KEY);
+        setUser(null);
+        setRoles([]);
+        if (hadSession) setSessionExpired(true);
+      }),
+    [],
+  );
 
   const login = async (userName: string, password: string) => {
     setIsLoading(true);
@@ -60,6 +89,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       localStorage.setItem(ROLES_KEY, JSON.stringify(data.roles ?? []));
       setUser(data.user);
       setRoles(data.roles ?? []);
+      setSessionExpired(false);
     } catch (e) {
       setError(e instanceof Error ? e.message : 'Login failed');
       throw e;
@@ -74,6 +104,8 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     localStorage.removeItem(ROLES_KEY);
     setUser(null);
     setRoles([]);
+    // Her own tap — nothing expired.
+    setSessionExpired(false);
   };
 
   return (
@@ -85,6 +117,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         isAuthenticated: !!user,
         isLoading,
         error,
+        sessionExpired,
         login,
         logout,
       }}

@@ -203,8 +203,15 @@ export interface HowItWorkItem {
 }
 
 export interface StoreRecommendation {
-  globalId: number;
+  /** Not sent by `ReservationLinks/Booking` today (its DTO carries `recommendStatNum` only). */
+  globalId?: number;
   recommendStatNum: number;
+  /**
+   * The recommended station's Sub (SPEC-06 R-08). A StatNum alone does not identify a station
+   * — the same number exists in every Sub of the site — so it is shown with it once the API
+   * sends it. Absent on an API that predates R-08.
+   */
+  recommendSNum?: number | null;
   isActive?: number;
 }
 

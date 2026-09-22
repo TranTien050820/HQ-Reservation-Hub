@@ -7,6 +7,7 @@ import {
   type PagedResult,
   type PreOrder,
   type PreOrderLineChange,
+  type ReservationBooking,
   type ReservationReleaseResult,
   type SiteScope,
 } from '../types';
@@ -18,7 +19,40 @@ import {
  * reading which bookings arrive with food already chosen, and releasing that food to the
  * kitchen once the guest is seated at a real table. Nothing reaches the POS until Release
  * runs, which is why a pre-order that nobody releases simply never gets cooked.
+ *
+ * Every call here carries the full station scope `(siteId, sNum, statNum)` (SPEC-06 R-10).
+ * One Sub runs several restaurants, and a scope that stops at `sNum` hands this hostess the
+ * food — names, phones, totals — of every other restaurant sharing the POS database.
  */
+
+/**
+ * The scope a call about ONE booking runs under: the booking's own `(siteId, sNum, statNum)`.
+ *
+ * A pre-order belongs to the booking it was placed for, and the booking record is the source
+ * of truth for which station that is — not whichever link this terminal happened to open. The
+ * link only fills in a piece an older row came back without. In practice the two agree: every
+ * booking this app lists was searched with the link's own StatNum.
+ */
+export function bookingScope(
+  booking: Pick<ReservationBooking, 'siteId' | 'sNum' | 'statNum'> | null | undefined,
+  link: SiteScope,
+): SiteScope {
+  return {
+    siteId: booking?.siteId ?? link.siteId,
+    sNum: booking?.sNum ?? link.sNum,
+    statNum: booking?.statNum ?? link.statNum,
+  };
+}
+
+/**
+ * Query string of the per-booking endpoints (`Reservation/{no}/…`). An API that predates
+ * SPEC-06 ignores unknown query parameters, so sending them is safe before it learns to
+ * filter on them. They go in the query, never the body: the body of `Release` must stay
+ * empty for the HMAC signature (see `http.ts`).
+ */
+function scopeParams(scope: SiteScope) {
+  return { siteId: scope.siteId, sNum: scope.sNum, statNum: scope.statNum };
+}
 
 /** Raw page shape of GET api/OrderHub/Orders — `total`, not the `totalRecords` used elsewhere. */
 interface OrderHubOrdersPage {
@@ -30,9 +64,13 @@ interface OrderHubOrdersPage {
  * One page of orders. `Status` is an exact match server-side, so covering several statuses
  * means one call each. `From`/`To` are deliberately not sent: they filter on `CreatedAt`, and
  * a pre-order for tonight may well have been placed last week.
+ *
+ * `StatNum` is an exact match on the order's own station, already honoured by the API as
+ * deployed. The station is the one the booking was made on: a pre-order is placed through
+ * the guest's booking link, and that link is the booking's station.
  */
 async function fetchOrdersPage(
-  scope: Pick<SiteScope, 'siteId' | 'sNum'>,
+  scope: SiteScope,
   filter: { status?: string; search?: string },
   pageIndex: number,
   pageSize: number,
@@ -41,6 +79,7 @@ async function fetchOrdersPage(
     params: {
       SiteId: scope.siteId,
       StoreId: scope.sNum,
+      StatNum: scope.statNum,
       Status: filter.status,
       Search: filter.search,
       Page: pageIndex,
@@ -70,13 +109,16 @@ export interface PreOrdersByReservation {
  * Every pre-order still waiting for its guest, keyed by reservation.
  *
  * Only the pre-release statuses are fetched: once a booking is checked in and released, its
- * orders move on to the kitchen states and stop being the hostess's business. There is no
- * "orders of reservation X" endpoint, so the store's open pre-orders are pulled once and
- * matched client-side — the set is bounded by upcoming reservations, not by history.
+ * orders move on to the kitchen states and stop being the hostess's business. The station's
+ * open pre-orders are pulled once and matched client-side — the set is bounded by upcoming
+ * reservations, not by history — which is why this is the call for LISTS of bookings.
+ *
+ * `scope` is the link's: every booking the list is matched against was searched with that
+ * same StatNum. A pre-order filed under another station than its booking (placed through a
+ * different restaurant's link before SPEC-06 R-13 closed that door) is not in this set —
+ * anything that decides about ONE booking asks `fetchPreOrdersForReservation` instead.
  */
-export async function fetchPreOrdersByReservation(
-  scope: Pick<SiteScope, 'siteId' | 'sNum'>,
-): Promise<PreOrdersByReservation> {
+export async function fetchPreOrdersByReservation(scope: SiteScope): Promise<PreOrdersByReservation> {
   const pages = await Promise.all(
     PRE_RELEASE_ORDER_STATUSES.map((status) =>
       fetchAllPages((pageIndex, pageSize) => fetchOrdersPage(scope, { status }, pageIndex, pageSize)),
@@ -123,18 +165,35 @@ const RESERVATION_ORDERS_PAGE = 200;
  * The result is narrowed to the pre-release statuses so the panel keeps its meaning — every
  * order it shows is one the hostess can still release, edit, or call off. `A-30` also
  * returns already-released and cancelled orders, which belong to the POS bill, not here.
+ *
+ * `scope` is the BOOKING's (`bookingScope`), sent as `siteId`/`sNum`/`statNum` query params.
  */
-export async function fetchPreOrdersForReservation(
-  reservationNo: string,
-  scope: Pick<SiteScope, 'siteId' | 'sNum'>,
-): Promise<PreOrder[]> {
+export async function fetchPreOrdersForReservation(reservationNo: string, scope: SiteScope): Promise<PreOrder[]> {
+  const orders = await readReservationOrders(reservationNo, scope);
+  return orders.length > 0 ? hydrateItems(orders, reservationNo, scope) : orders;
+}
+
+/**
+ * Does this ONE booking still have food waiting for Release? One `A-30` call, no line fill-in.
+ *
+ * What the seating screen asks before it decides to skip Release. The station-wide list can
+ * come back without a booking's orders — it failed, it hit the page ceiling, an order changed
+ * status mid-walk, or the order sits under another station than the link — and skipping on
+ * that answer is how food silently never reaches the kitchen (SPEC-06 R-14).
+ */
+export async function hasPreOrdersForReservation(reservationNo: string, scope: SiteScope): Promise<boolean> {
+  return (await readReservationOrders(reservationNo, scope)).length > 0;
+}
+
+/** `A-30` narrowed to the pre-release statuses, exactly as the orders came back. */
+async function readReservationOrders(reservationNo: string, scope: SiteScope): Promise<PreOrder[]> {
   const res = await http.get<ApiEnvelope<ReservationOrdersResponse>>(
     `/api/OrderHub/Reservation/${encodeURIComponent(reservationNo)}/Orders`,
+    { params: scopeParams(scope) },
   );
-  const orders = (res.data.data?.orders ?? []).filter((order) =>
+  return (res.data.data?.orders ?? []).filter((order) =>
     (PRE_RELEASE_ORDER_STATUSES as readonly string[]).includes(order.orderStatus),
   );
-  return orders.length > 0 ? hydrateItems(orders, reservationNo, scope) : orders;
 }
 
 /**
@@ -149,11 +208,7 @@ export async function fetchPreOrdersForReservation(
  * belong to the booking is decided by `A-30` alone. An order the search fails to bring back
  * simply keeps no lines rather than borrowing another booking's.
  */
-async function hydrateItems(
-  orders: PreOrder[],
-  reservationNo: string,
-  scope: Pick<SiteScope, 'siteId' | 'sNum'>,
-): Promise<PreOrder[]> {
+async function hydrateItems(orders: PreOrder[], reservationNo: string, scope: SiteScope): Promise<PreOrder[]> {
   if (orders.every((order) => Array.isArray(order.items))) return orders;
 
   try {
@@ -180,11 +235,14 @@ async function hydrateItems(
  * `empNum` stamps the order's event log with who did it. It carries the app's `userId`,
  * the same actor `userSeat` records when the guest is seated, so one booking's audit trail
  * names the same person throughout.
+ *
+ * `scope` is the booking's (`bookingScope`), sent as query params — the body is unchanged.
  */
 export async function editPreOrderLines(
   reservationNo: string,
   orderUid: string,
   changes: PreOrderLineChange[],
+  scope: SiteScope,
   options: { empNum?: number | null; note?: string } = {},
 ): Promise<EditPreOrderResult> {
   const res = await http.post<ApiEnvelope<EditPreOrderResult>>(
@@ -194,6 +252,7 @@ export async function editPreOrderLines(
       changes,
       note: options.note?.trim() || undefined,
     },
+    { params: scopeParams(scope) },
   );
   const data = res.data.data;
   return {
@@ -211,11 +270,20 @@ export async function editPreOrderLines(
  * Call it only once the booking is Seated **and** has a table in ReserSeatTables: the backend
  * needs that table to know which POS bill the food joins, and answers 409 otherwise. Safe to
  * call twice — an order that already left `scheduled` lands in `skipped` rather than being
- * cooked a second time.
+ * cooked a second time. Just as safe on a booking with no pre-order at all: it answers
+ * `released: 0, skipped: 0` and touches nothing.
+ *
+ * `scope` is the booking's (`bookingScope`), in the query string. No body — the signature
+ * of an empty POST is `"." + ""`, which is what `http.ts` signs.
  */
-export async function releaseReservationOrders(reservationNo: string): Promise<ReservationReleaseResult> {
+export async function releaseReservationOrders(
+  reservationNo: string,
+  scope: SiteScope,
+): Promise<ReservationReleaseResult> {
   const res = await http.post<ApiEnvelope<ReservationReleaseResult>>(
     `/api/OrderHub/Reservation/${encodeURIComponent(reservationNo)}/Release`,
+    undefined,
+    { params: scopeParams(scope) },
   );
   return res.data.data;
 }
@@ -225,12 +293,13 @@ export async function releaseReservationOrders(reservationNo: string): Promise<R
  *
  * Cancels the food only; the booking itself is untouched. Money already taken is NOT refunded
  * automatically — deposit policy is the store's call, so the system just files the order for
- * Ops to settle.
+ * Ops to settle. `scope` is the booking's, in the query string.
  */
-export async function cancelReservationOrders(reservationNo: string, note: string): Promise<number> {
+export async function cancelReservationOrders(reservationNo: string, note: string, scope: SiteScope): Promise<number> {
   const res = await http.post<ApiEnvelope<{ reservationNo: string; cancelled: number }>>(
     `/api/OrderHub/Reservation/${encodeURIComponent(reservationNo)}/Cancel`,
     { note },
+    { params: scopeParams(scope) },
   );
   return res.data.data?.cancelled ?? 0;
 }

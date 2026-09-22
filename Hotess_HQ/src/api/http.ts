@@ -1,5 +1,5 @@
 import axios, { AxiosError, type InternalAxiosRequestConfig } from 'axios';
-import { getTokens, setTokens, clearTokens } from '../store/tokenStorage';
+import { getTokens, setTokens, expireSession } from '../store/tokenStorage';
 import { refreshAccessToken } from './auth';
 
 /**
@@ -139,6 +139,20 @@ http.interceptors.request.use(async (config: InternalAxiosRequestConfig) => {
 let refreshPromise: Promise<string | null> | null = null;
 
 /**
+ * Did the server actually turn the refresh down, as opposed to never being reached?
+ *
+ * `refresh-token` refuses with an HTTP 200 envelope `{ status: 401 }` (surfaced by the
+ * response interceptor below with the 200 response attached), or with a 4xx. No response at
+ * all, or a 5xx, says nothing about the session — only that the network or the server is
+ * having a bad minute, and logging a hostess out over that loses her place for nothing.
+ */
+function isRefreshRefused(error: unknown): boolean {
+  if (!axios.isAxiosError(error)) return true;
+  const status = error.response?.status;
+  return status != null && status < 500;
+}
+
+/**
  * A 401 from PartnerTokenMiddleware is not an expired session.
  *
  * Refreshing on it would burn the refresh token, fail again, clear storage and drop the
@@ -176,8 +190,12 @@ http.interceptors.response.use(
     ) {
       original._retry = true;
       const { accessToken, refreshToken } = getTokens();
+      // Every way out of this branch without a fresh token ENDS the session — `expireSession`
+      // logs the hostess out for real (SPEC-06 R-14). Clearing storage alone used to leave the
+      // screens up as "logged in" while every call after it went out tokenless and 401'd. The
+      // auth context ignores the signal when nobody was logged in (a 401 on the login form).
       if (!accessToken || !refreshToken) {
-        clearTokens();
+        expireSession();
         return Promise.reject(error);
       }
       try {
@@ -187,8 +205,11 @@ http.interceptors.response.use(
               setTokens(data.accessToken, data.refreshToken);
               return data.accessToken;
             })
-            .catch(() => {
-              clearTokens();
+            .catch((refreshError: unknown) => {
+              // Once, here, for every request queued behind the same refresh. A refresh that
+              // never reached the server (Wi-Fi drop, timeout, a 5xx) is not a refused session:
+              // the tokens stay, this request fails, and the next 401 simply tries again.
+              if (isRefreshRefused(refreshError)) expireSession();
               return null;
             })
             .finally(() => {
@@ -201,7 +222,7 @@ http.interceptors.response.use(
         original.headers.Authorization = `Bearer ${newToken}`;
         return http.request(original);
       } catch (e) {
-        clearTokens();
+        expireSession();
         return Promise.reject(e);
       }
     }

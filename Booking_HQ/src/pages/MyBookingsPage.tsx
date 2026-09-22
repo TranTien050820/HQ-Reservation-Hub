@@ -25,7 +25,14 @@ export default function MyBookingsPage() {
   const [pastVisibleCount, setPastVisibleCount] = useState(PAST_PAGE_SIZE);
 
   const { register, handleSubmit } = useForm<SearchFormValues>({ defaultValues: { phone: '' } });
-  const bookingsQuery = useBookingsByPhone(searchedPhone ?? '', data?.linkInfo?.siteId, data?.linkInfo?.sNum);
+  // The link's own station, not just its Sub: the Pre-order and Cancel buttons below act for
+  // THIS restaurant, so only this restaurant's bookings may carry them (SPEC-06 R-13).
+  const bookingsQuery = useBookingsByPhone(
+    searchedPhone ?? '',
+    data?.linkInfo?.siteId,
+    data?.linkInfo?.sNum,
+    data?.linkInfo?.statNum,
+  );
   const cancelBookingMutation = useCancelBooking();
 
   const bookings: ReservationBooking[] | null = bookingsQuery.data ?? null;

@@ -190,11 +190,11 @@
   },
   "myBookings": {
     "title": "내 예약",
-    "subtitle": "예약 시 사용한 전화번호로 예약을 조회하세요.",
+    "subtitle": "예약 시 사용한 전화번호로 이 레스토랑의 예약을 조회하세요.",
     "phonePlaceholder": "(555) 123-4567",
     "search": "조회",
     "searching": "조회 중…",
-    "noResults": "해당 전화번호로 예약을 찾을 수 없습니다.",
+    "noResults": "이 레스토랑에서 해당 전화번호로 된 예약을 찾을 수 없습니다.",
     "guests": "명",
     "reservationNo": "예약 번호",
     "cancel": "취소",

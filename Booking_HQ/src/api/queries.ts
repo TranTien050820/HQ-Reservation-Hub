@@ -21,8 +21,8 @@ export const queryKeys = {
   periods: (siteId: number, sNum: number) => ['periods', siteId, sNum] as const,
   periodRules: (siteId: number, sNum: number) => ['periodRules', siteId, sNum] as const,
   dateOverrides: (siteId: number, sNum: number) => ['dateOverrides', siteId, sNum] as const,
-  bookingsByPhone: (phone: string, siteId?: number, sNum?: number) =>
-    ['bookings', 'byPhone', phone, siteId, sNum] as const,
+  bookingsByPhone: (phone: string, siteId?: number, sNum?: number, statNum?: number) =>
+    ['bookings', 'byPhone', phone, siteId, sNum, statNum] as const,
   menuCategories: (siteId: number, sNum: number) => ['menuCategories', siteId, sNum] as const,
   menuItems: (siteId: number, sNum: number) => ['menuItems', siteId, sNum] as const,
 };
@@ -122,11 +122,12 @@ export function useMenu(siteId: number, sNum: number) {
   };
 }
 
-export function useBookingsByPhone(phone: string, siteId?: number, sNum?: number) {
+/** `statNum` is the link's station — "My bookings" lists this restaurant's bookings only (SPEC-06 R-13). */
+export function useBookingsByPhone(phone: string, siteId?: number, sNum?: number, statNum?: number) {
   const trimmed = phone.trim();
   return useQuery({
-    queryKey: queryKeys.bookingsByPhone(trimmed, siteId, sNum),
-    queryFn: () => fetchBookingsByPhone(trimmed, siteId, sNum),
+    queryKey: queryKeys.bookingsByPhone(trimmed, siteId, sNum, statNum),
+    queryFn: () => fetchBookingsByPhone(trimmed, siteId, sNum, statNum),
     enabled: false,
   });
 }

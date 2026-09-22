@@ -13,12 +13,17 @@ import { PreOrderBadge } from '../components/PreOrderPanel';
 import { AlertIcon, ArmchairIcon, ArrowLeftIcon, LayoutIcon, RefreshIcon, StarIcon } from '../components/icons';
 import { fetchAvailableSlots } from '../api/availableSlots';
 import { searchBookings, updateBooking } from '../api/bookings';
-import { cancelReservationOrders, releaseReservationOrders } from '../api/orderHub';
+import {
+  bookingScope,
+  cancelReservationOrders,
+  hasPreOrdersForReservation,
+  releaseReservationOrders,
+} from '../api/orderHub';
 import { fetchAllPages } from '../api/paginate';
 import { usePosOpenTables } from '../hooks/usePosOpenTables';
 import { usePreOrders } from '../hooks/usePreOrders';
 import { formatVnHHmm, todayStr } from '../utils/date';
-import { apiErrorMessage } from '../utils/apiError';
+import { apiErrorMessage, tableRefusalMessage, tableRefusalOf } from '../utils/apiError';
 import { getEffectiveStatus } from '../utils/bookingStatus';
 import { computeSeatWindow, toMinutes } from '../utils/timeWindow';
 import { buildTableOccupancy, isTableBlocked, isTableReservable } from '../utils/tableOccupancy';
@@ -29,8 +34,18 @@ import {
   type ReservationBooking,
   type ReservationReleaseResult,
   type ReservationZone,
+  type SiteScope,
   type TableSetup,
 } from '../types';
+
+/**
+ * One booking's pre-order action: which booking, and the booking's own station scope that
+ * every Release / Cancel carries (SPEC-06 R-10) — not the scope of the link this terminal opened.
+ */
+interface PreOrderTarget {
+  reservationNo: string;
+  scope: SiteScope;
+}
 
 /**
  * When AvailableSlots has no row for a zone (e.g. no data yet for today),
@@ -45,6 +60,14 @@ import {
  * enough to run all service without being slow enough to seat a guest onto a taken table.
  */
 const FLOOR_PLAN_REFRESH_MS = 30_000;
+
+/** The tables a booking holds right now. `isActive === 0` rows are retired moves, not its table. */
+function heldTablenums(booking: ReservationBooking): number[] {
+  return (booking.seatTables ?? [])
+    .filter((st) => st.isActive !== 0)
+    .map((st) => st.reserTable ?? st.tableNum)
+    .filter((v): v is number => v != null);
+}
 
 function resolveZoneSlot(zone: ReservationZone, slots: AvailableSlot[]) {
   const found = slots.find((s) => s.zoneID === zone.zoneID);
@@ -63,7 +86,19 @@ export function SeatingScreen() {
   const location = useLocation();
   const activeBooking = (location.state as { booking?: ReservationBooking } | null)?.booking;
   const zones = useMemo(() => linkInfo?.zones ?? [], [linkInfo]);
-  const allTables = useMemo(() => linkInfo?.tableSetups ?? [], [linkInfo]);
+  /**
+   * Tables the server refused for this restaurant while the screen was open
+   * (`TABLE_NOT_IN_RESTAURANT`). The refusal is final — the same table is refused every time
+   * (SPEC-06 §4.10) — so each one is folded into the store setup as `canreserve = 0`: the grid
+   * greys it out, suggestions skip it, and every guard that already refuses an out-of-service
+   * table refuses it too, instead of letting the hostess tap it into the same 403 again.
+   */
+  const [refusedTablenums, setRefusedTablenums] = useState<ReadonlySet<number>>(() => new Set());
+  const allTables = useMemo(() => {
+    const setups = linkInfo?.tableSetups ?? [];
+    if (refusedTablenums.size === 0) return setups;
+    return setups.map((tb) => (refusedTablenums.has(tb.tablenum) ? { ...tb, canreserve: 0 } : tb));
+  }, [linkInfo, refusedTablenums]);
   const zoneSectionLinks = useMemo(() => linkInfo?.zoneSectionLinks ?? [], [linkInfo]);
   const sections = useMemo(() => linkInfo?.sections ?? [], [linkInfo]);
 
@@ -88,17 +123,20 @@ export function SeatingScreen() {
   const partySize = activeBooking?.partySize ?? 1;
 
   const { posOpenTablenums, posOpenFailed, reloadPosOpenTables } = usePosOpenTables(linkInfo);
-  const { preOrdersFor, reloadPreOrders } = usePreOrders(linkInfo);
+  const { preOrdersFor, preOrdersFailed, reloadPreOrders } = usePreOrders(linkInfo);
   const [releasing, setReleasing] = useState(false);
   /** Held open after Release so warnings (price drift, skipped orders) get read, not toasted away. */
   const [releaseResult, setReleaseResult] = useState<ReservationReleaseResult | null>(null);
   /** Set when the panel interrupted a seating flow that was on its way back to the floor plan. */
   const [returnAfterRelease, setReturnAfterRelease] = useState(false);
-  /** Reservation whose Release failed after the guest was already seated — offer a retry. */
-  const [releaseRetryNo, setReleaseRetryNo] = useState<string | null>(null);
+  /**
+   * Booking whose Release failed after the guest was already seated — offer a retry.
+   * `expectOrders` travels with it so the retry reads its result the way the first try would.
+   */
+  const [releaseRetry, setReleaseRetry] = useState<{ target: PreOrderTarget; expectOrders: boolean } | null>(null);
   const [cancelling, setCancelling] = useState(false);
-  /** Reservation awaiting the "really call the food off?" confirmation. */
-  const [cancelTargetNo, setCancelTargetNo] = useState<string | null>(null);
+  /** Booking awaiting the "really call the food off?" confirmation. */
+  const [cancelTarget, setCancelTarget] = useState<PreOrderTarget | null>(null);
   /**
    * Bumped whenever this screen changes a booking's food, so the open booking card re-reads
    * its own orders. The card fetches per booking (`H-04`) and would otherwise keep showing
@@ -110,6 +148,15 @@ export function SeatingScreen() {
     setPreOrderTick((n) => n + 1);
   }, [reloadPreOrders]);
   const activePreOrders = preOrdersFor(activeBooking?.reservationNo);
+
+  /** Release / Cancel target of a booking: its number and its own station (SPEC-06 R-10). */
+  const targetOf = useCallback(
+    (booking: ReservationBooking | null | undefined): PreOrderTarget | null =>
+      booking?.reservationNo && linkInfo
+        ? { reservationNo: String(booking.reservationNo), scope: bookingScope(booking, linkInfo) }
+        : null,
+    [linkInfo],
+  );
 
   /**
    * Tables just written by this screen — `[]` for a zone-only seating, `null` while
@@ -199,6 +246,21 @@ export function SeatingScreen() {
     () => Array.from(ownTablenums).filter((n) => !isTableReservable(tableByNum.get(n))),
     [ownTablenums, tableByNum],
   );
+
+  /**
+   * Tables this booking holds that are not in its zone's sections — a hold written against
+   * another zone, or a table outside the restaurant altogether (SPEC-06 R-11). They are kept
+   * out of the pre-selection below: the grid only draws the zone's tables, so such a pick
+   * would ride into the Seat payload without ever being seen. Named here so the guest's table
+   * does not just silently fail to come up selected.
+   */
+  const ownOutsideZoneTablenums = useMemo(() => {
+    if (!activeBooking || alreadySeated || activeBooking.zoneID == null || activeBooking.zoneID !== selectedZoneID) {
+      return [];
+    }
+    const inZone = new Set(tables.map((tb) => tb.tablenum));
+    return heldTablenums(activeBooking).filter((n) => !inZone.has(n));
+  }, [activeBooking, alreadySeated, selectedZoneID, tables]);
 
   // The hold this booking is about to take, which is what conflicts must be
   // judged against — NOT "now". Seating a 19:00 reservation at 15:00 has to
@@ -364,11 +426,16 @@ export function SeatingScreen() {
         if (activeBooking?.zoneID === zoneID && !alreadySeated) {
           // …except a table the store has since taken out of service: re-selecting
           // it would put a `canreserve = 0` table straight back into the Seat
-          // payload, past a grid that already renders it as unavailable.
-          const activeTablenums = (activeBooking.seatTables ?? [])
-            .map((st) => st.reserTable ?? st.tableNum)
-            .filter((v): v is number => v != null)
-            .filter((n) => isTableReservable(tableByNum.get(n)));
+          // payload, past a grid that already renders it as unavailable. Same for a
+          // held table outside this zone's sections: the grid draws only the zone, so
+          // that pick would be sent without the hostess ever seeing it (SPEC-06 R-11).
+          const zoneSecNums = new Set(zoneSectionLinks.filter((l) => l.zoneID === zoneID).map((l) => l.secNum));
+          const activeTablenums = heldTablenums(activeBooking)
+            .filter((n) => isTableReservable(tableByNum.get(n)))
+            .filter((n) => {
+              const table = tableByNum.get(n);
+              return table != null && zoneSecNums.has(table.secnum);
+            });
           setSelectedTablenums(new Set(activeTablenums));
           // Already sitting across several tables — keep merging on so the
           // pre-selection survives the first tap.
@@ -385,7 +452,7 @@ export function SeatingScreen() {
       if (isNewZone && !ok) toast.error(t('common.error'));
       if (isNewZone) setLoading(false);
     },
-    [linkInfo, toast, t, activeBooking, alreadySeated, refreshFloorPlan, tableByNum],
+    [linkInfo, toast, t, activeBooking, alreadySeated, refreshFloorPlan, tableByNum, zoneSectionLinks],
   );
 
   useEffect(() => {
@@ -482,13 +549,23 @@ export function SeatingScreen() {
    *
    * `needs-review` means the outcome went into the result panel (warnings, skipped orders,
    * or nothing released) and the caller should stay put until it is dismissed.
+   *
+   * `expectOrders` is false when nobody could say whether the guest pre-ordered at all (the
+   * list and the per-booking read both failed). Release then runs as a check, and an empty
+   * answer — nothing sent, nothing skipped — is the quiet "there was no food" it exists to
+   * confirm, not a "these were already released" panel.
    */
-  const releasePreOrders = async (reservationNo: string): Promise<'released' | 'needs-review' | 'failed'> => {
+  const releasePreOrders = async (
+    target: PreOrderTarget,
+    expectOrders = true,
+  ): Promise<'released' | 'needs-review' | 'failed'> => {
     setReleasing(true);
     try {
-      const result = await releaseReservationOrders(reservationNo);
+      const result = await releaseReservationOrders(target.reservationNo, target.scope);
       preOrdersChanged();
-      setReleaseRetryNo(null);
+      setReleaseRetry(null);
+      const nothingAtAll = result.released === 0 && result.skipped === 0 && result.warnings.length === 0;
+      if (!expectOrders && nothingAtAll) return 'released';
       if (result.warnings.length > 0 || result.skipped > 0 || result.released === 0) {
         setReleaseResult(result);
         return 'needs-review';
@@ -498,12 +575,34 @@ export function SeatingScreen() {
     } catch (err) {
       // The seating itself already went through — say what failed rather than implying it
       // all rolled back. The retry banner keeps the food from being forgotten, which is the
-      // one outcome the guest actually feels.
-      toast.error(err instanceof Error ? err.message : t('preorder.releaseError'));
-      setReleaseRetryNo(reservationNo);
+      // one outcome the guest actually feels. The server's own reason, not axios' "Request
+      // failed with status code 409": "booking not Seated yet" and "no table" are both
+      // things the hostess can act on.
+      toast.error(apiErrorMessage(err, t('preorder.releaseError')));
+      setReleaseRetry({ target, expectOrders });
       return 'failed';
     } finally {
       setReleasing(false);
+    }
+  };
+
+  /**
+   * Is there food waiting for this booking's Release — asked of the booking itself before
+   * anything decides to skip it (SPEC-06 R-14).
+   *
+   * The station-wide list behind `activePreOrders` only ever proves "yes". An empty answer
+   * from it can be a failed read, a list that hit its page ceiling, an order that changed
+   * status mid-walk, or a pre-order filed under another station than the link (R-10) — and
+   * treating any of those as "no pre-order" is how food silently never reaches the kitchen.
+   * `unknown` is not `none`: the caller still releases, which is harmless on a booking that
+   * has nothing.
+   */
+  const pendingPreOrdersOf = async (target: PreOrderTarget): Promise<'some' | 'none' | 'unknown'> => {
+    if (activePreOrders.length > 0) return 'some';
+    try {
+      return (await hasPreOrdersForReservation(target.reservationNo, target.scope)) ? 'some' : 'none';
+    } catch {
+      return 'unknown';
     }
   };
 
@@ -518,17 +617,18 @@ export function SeatingScreen() {
    * Cancels every pre-order of the booking at once (the endpoint has no per-order form) and
    * leaves the booking untouched — the guest still has their table, just no pre-ordered food.
    */
-  const cancelPreOrders = async (reservationNo: string) => {
+  const cancelPreOrders = async (target: PreOrderTarget) => {
     setCancelling(true);
     try {
-      const cancelled = await cancelReservationOrders(reservationNo, 'GUEST_CANCELLED_AT_CHECKIN');
+      const cancelled = await cancelReservationOrders(target.reservationNo, 'GUEST_CANCELLED_AT_CHECKIN', target.scope);
       preOrdersChanged();
       // Anything already released is out of reach here, so 0 is a real answer, not a no-op.
       if (cancelled > 0) toast.success(t('preorder.cancelSuccess', { count: cancelled }));
       else toast.info(t('preorder.cancelNothing'));
-      setReleaseRetryNo(null);
+      setReleaseRetry(null);
     } catch (err) {
-      toast.error(err instanceof Error ? err.message : t('preorder.cancelError'));
+      // The server's reason rather than axios' status-code sentence (same as Release above).
+      toast.error(apiErrorMessage(err, t('preorder.cancelError')));
     } finally {
       setCancelling(false);
     }
@@ -536,10 +636,35 @@ export function SeatingScreen() {
 
   /** Second attempt after a failed Release; the guest is already seated, so only the food is at stake. */
   const retryRelease = async () => {
-    if (!releaseRetryNo) return;
-    const outcome = await releasePreOrders(releaseRetryNo);
+    if (!releaseRetry) return;
+    const outcome = await releasePreOrders(releaseRetry.target, releaseRetry.expectOrders);
     if (outcome === 'released') navigate('../seating', { replace: true });
     else if (outcome === 'needs-review') setReturnAfterRelease(true);
+  };
+
+  /**
+   * A seating the server refused. `TABLE_NOT_IN_RESTAURANT` is final (SPEC-06 §4.10): the
+   * refused table is taken out of this screen for good — sending it again only earns the
+   * same 403 — and the hostess is told why in words that point at the fix. Anything else
+   * keeps the server's own sentence.
+   */
+  const reportSeatError = (err: unknown, pickedTablenums: number[]) => {
+    const refusal = tableRefusalOf(err);
+    if (!refusal) {
+      toast.error(apiErrorMessage(err, t('seating.seatError')));
+      return;
+    }
+    toast.error(tableRefusalMessage(refusal, t, pickedTablenums));
+    // An unassigned station refuses every table alike; there is no one table to strike out.
+    if (refusal.reason === 'STATION_UNASSIGNED') return;
+    const refusedNum = refusal.tableNum;
+    if (refusedNum != null) {
+      setRefusedTablenums((prev) => new Set([...prev, refusedNum]));
+    } else {
+      // The server did not say which of the picked tables it refused — clear the pick
+      // rather than strike out a table that may have been fine.
+      setSelectedTablenums(new Set());
+    }
   };
 
   /** The seating already succeeded — the panel was only holding the screen so its notes get read. */
@@ -567,8 +692,12 @@ export function SeatingScreen() {
       setJustSeatedTables([]);
       toast.success(t('seating.seatSuccess'));
       // Seating to a zone assigns no table, and without one the kitchen has no bill to send
-      // the food to. Say so instead of letting the pre-order sit there unnoticed.
-      if (activePreOrders.length > 0) toast.info(t('preorder.needsTableToRelease'));
+      // the food to. Say so instead of letting the pre-order sit there unnoticed — including
+      // when nobody could tell whether there is one (R-14).
+      const target = targetOf(activeBooking);
+      const pending = target ? await pendingPreOrdersOf(target) : 'none';
+      if (pending === 'some') toast.info(t('preorder.needsTableToRelease'));
+      else if (pending === 'unknown') toast.info(t('preorder.unknownNeedsTable'));
       navigate('../seating', { replace: true });
     } catch (err) {
       // The backend refuses for reasons the hostess can act on — zone full, booking
@@ -582,6 +711,16 @@ export function SeatingScreen() {
     // The guest is already at a table; re-running this would lay a second set of seat
     // rows over the first. The buttons are gone in this state — this is the backstop.
     if (alreadySeated) return;
+    // Only this zone's tables are on the grid, so only they may be in the payload. Every way
+    // of picking (the grid, the suggestions, the pre-selection) already keeps to the zone;
+    // this is the backstop for a pick that slipped past them (SPEC-06 R-11).
+    const zoneTablenums = new Set(tables.map((tb) => tb.tablenum));
+    const outsideZone = Array.from(selectedTablenums).filter((n) => !zoneTablenums.has(n));
+    if (outsideZone.length > 0) {
+      toast.error(t('seating.outsideZoneBlocked', { tables: outsideZone.map((n) => `#${n}`).join(', ') }));
+      setSelectedTablenums((prev) => new Set(Array.from(prev).filter((n) => zoneTablenums.has(n))));
+      return;
+    }
     // Last gate on the store's own "this table takes no reservations" flag. The
     // grid already refuses to select such a table, so reaching here means the
     // setup changed under an open screen or the pick came in pre-selected —
@@ -632,22 +771,27 @@ export function SeatingScreen() {
       // Before the Release branch below, which can keep the hostess on this screen.
       setJustSeatedTables(seatTables.map((st) => st.tableNum));
       toast.success(t('seating.seatSuccess'));
-      // Now — and only now — the food this guest ordered days ago has a real table and bill
-      // to flow into. Nobody else calls Release, so a skip here means it never gets cooked.
-      if (activePreOrders.length > 0) {
-        const outcome = await releasePreOrders(activeBooking.reservationNo);
-        // Either the result panel owns what happens next, or Release failed and the hostess
-        // stays here to retry it from the booking card.
-        if (outcome === 'needs-review') {
-          setReturnAfterRelease(true);
-          return;
-        }
-        if (outcome === 'failed') return;
-      }
-      navigate('../seating', { replace: true });
     } catch (err) {
-      toast.error(apiErrorMessage(err, t('seating.seatError')));
+      reportSeatError(err, Array.from(selectedTablenums));
+      return;
     }
+
+    // Now — and only now — the food this guest ordered days ago has a real table and bill
+    // to flow into. Nobody else calls Release, so a skip here means it never gets cooked:
+    // skipped only on a definite "no pre-order", never on a list that could not answer (R-14).
+    const target = targetOf(activeBooking);
+    const pending = target ? await pendingPreOrdersOf(target) : 'none';
+    if (target && pending !== 'none') {
+      const outcome = await releasePreOrders(target, pending === 'some');
+      // Either the result panel owns what happens next, or Release failed and the hostess
+      // stays here to retry it from the action bar.
+      if (outcome === 'needs-review') {
+        setReturnAfterRelease(true);
+        return;
+      }
+      if (outcome === 'failed') return;
+    }
+    navigate('../seating', { replace: true });
   };
 
   /**
@@ -658,7 +802,7 @@ export function SeatingScreen() {
   const showCapacityWarning = !!activeBooking && selectedTablenums.size > 0 && selectedCapacity < actualQty;
   const showExcessWarning = !!activeBooking && isExcessCapacity(selectedCapacity, actualQty);
   const canSeatNow = !!activeBooking && !alreadySeated;
-  const showActionBar = canSeatNow || !!releaseRetryNo || showCapacityWarning || showExcessWarning;
+  const showActionBar = canSeatNow || !!releaseRetry || showCapacityWarning || showExcessWarning;
 
   // A guest already at a table can still be sitting on un-released food: the guide's known
   // gap is exactly the hostess who seats someone and never calls Release. Offer the button
@@ -670,6 +814,7 @@ export function SeatingScreen() {
     !!detailBooking &&
     detailBooking.status === BookingStatus.Seated &&
     (detailBooking.seatTables ?? []).some((st) => (st.reserTable ?? st.tableNum) != null);
+  const detailTarget = targetOf(detailBooking);
 
   return (
     <div className="mx-auto flex w-full max-w-[1280px] flex-col lg:h-full lg:min-h-0">
@@ -827,6 +972,15 @@ export function SeatingScreen() {
                       {t('seating.posUnavailable')}
                     </p>
                   )}
+                  {/* The station's pre-order list could not be read, so a missing badge here
+                      proves nothing. Said out loud; seating still asks the booking itself
+                      before it decides there is no food to release (R-14). */}
+                  {activeBooking && preOrdersFailed && (
+                    <p className="note note-warn mb-2 flex shrink-0 items-start gap-1.5">
+                      <AlertIcon size={14} className="mt-px shrink-0" />
+                      {t('preorder.listFailed')}
+                    </p>
+                  )}
                   {/* Her guest's own table is greyed out and was dropped from the
                       pre-selection — say why, or it reads as the app losing the pick. */}
                   {activeBooking && ownUnavailableTablenums.length > 0 && (
@@ -834,6 +988,16 @@ export function SeatingScreen() {
                       <AlertIcon size={14} className="mt-px shrink-0" />
                       {t('seating.ownTableUnavailable', {
                         tables: ownUnavailableTablenums.map((n) => `#${n}`).join(', '),
+                      })}
+                    </p>
+                  )}
+                  {/* Same for a held table that is not in this zone at all — it cannot be
+                      shown on this grid, so it is not picked for her either. */}
+                  {ownOutsideZoneTablenums.length > 0 && (
+                    <p className="note note-warn mb-2 flex shrink-0 items-start gap-1.5">
+                      <AlertIcon size={14} className="mt-px shrink-0" />
+                      {t('seating.ownTableOutsideZone', {
+                        tables: ownOutsideZoneTablenums.map((n) => `#${n}`).join(', '),
                       })}
                     </p>
                   )}
@@ -890,11 +1054,15 @@ export function SeatingScreen() {
                         </p>
                       )}
 
-                      {releaseRetryNo && (
+                      {releaseRetry && (
                         <div className="note note-bad flex flex-wrap items-center justify-between gap-2">
                           <span className="flex items-center gap-1.5">
                             <AlertIcon size={14} className="shrink-0" />
-                            {t('preorder.releaseRetryHint')}
+                            {/* Not "their food has not reached the kitchen" when nobody knows
+                                whether there is any food — that sends the floor hunting. */}
+                            {releaseRetry.expectOrders
+                              ? t('preorder.releaseRetryHint')
+                              : t('preorder.releaseRetryUnknownHint')}
                           </span>
                           <button
                             onClick={retryRelease}
@@ -1110,18 +1278,18 @@ export function SeatingScreen() {
       )}
 
       <ConfirmDialog
-        open={!!cancelTargetNo}
+        open={!!cancelTarget}
         title={t('preorder.confirmCancelTitle')}
         message={t('preorder.confirmCancelMsg')}
         confirmLabel={t('preorder.cancel')}
         cancelLabel={t('common.close')}
         danger
         onConfirm={() => {
-          const target = cancelTargetNo;
-          setCancelTargetNo(null);
+          const target = cancelTarget;
+          setCancelTarget(null);
           if (target) void cancelPreOrders(target);
         }}
-        onCancel={() => setCancelTargetNo(null)}
+        onCancel={() => setCancelTarget(null)}
       />
 
       <BookingDetailModal
@@ -1129,13 +1297,11 @@ export function SeatingScreen() {
         preOrders={preOrdersFor(detailBooking?.reservationNo)}
         preOrdersRefreshTick={preOrderTick}
         onPreOrdersChanged={preOrdersChanged}
-        onRelease={detailReleasable ? () => void releasePreOrders(detailBooking!.reservationNo) : undefined}
+        onRelease={detailReleasable && detailTarget ? () => void releasePreOrders(detailTarget) : undefined}
         releasing={releasing}
         // No extra gate: the panel only ever lists orders that are still callable off, so if
         // the hostess can see them she can cancel them.
-        onCancelPreOrders={
-          detailBooking?.reservationNo ? () => setCancelTargetNo(detailBooking.reservationNo) : undefined
-        }
+        onCancelPreOrders={detailTarget ? () => setCancelTarget(detailTarget) : undefined}
         cancellingPreOrders={cancelling}
         onClose={() => setDetailBooking(null)}
       />

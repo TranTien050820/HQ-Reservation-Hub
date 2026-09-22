@@ -69,6 +69,15 @@ function StoreLayoutInner() {
     return <LoginPage />;
   }
 
+  // TODO(SPEC-06 R-10, waits for U-01): refuse an account whose sites do not include
+  // `linkInfo.siteId`. Today nothing can be checked — the admin JWT carries no site, `sites`
+  // from the login response is dropped (AuthContext keeps only user + roles) and
+  // `refresh-token` answers with an empty list. Once U-01 ships, login AND refresh return
+  // `sites: [{ siteId, siteName }]` (+ `revCenters`): keep them beside the roles, and show
+  // a "this account cannot open this store" screen with a log-out button when the link's
+  // site is not among them. A session stored before U-01 has no list at all — that must mean
+  // "not checked" (today's behaviour), never "no site allowed".
+
   return (
     <div className="flex h-screen flex-col overflow-hidden">
       {/* The bar spans the full width; only the content inside it is contained,

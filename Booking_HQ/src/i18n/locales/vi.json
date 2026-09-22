@@ -198,11 +198,11 @@
   },
   "myBookings": {
     "title": "Đơn đặt bàn của tôi",
-    "subtitle": "Tra cứu đơn đặt bàn bằng số điện thoại bạn đã dùng để đặt.",
+    "subtitle": "Tra cứu đơn đặt bàn tại nhà hàng này bằng số điện thoại bạn đã dùng để đặt.",
     "phonePlaceholder": "(555) 123-4567",
     "search": "Tìm kiếm",
     "searching": "Đang tìm…",
-    "noResults": "Không tìm thấy đơn đặt bàn với số điện thoại này.",
+    "noResults": "Không tìm thấy đơn đặt bàn tại nhà hàng này với số điện thoại này.",
     "guests": "khách",
     "reservationNo": "Mã đặt bàn",
     "cancel": "Hủy",
