@@ -8,6 +8,7 @@ import {
   type PreOrder,
   type PreOrderLineChange,
   type ReservationBooking,
+  type ReservationCancelResult,
   type ReservationReleaseResult,
   type SiteScope,
 } from '../types';
@@ -294,12 +295,24 @@ export async function releaseReservationOrders(
  * Cancels the food only; the booking itself is untouched. Money already taken is NOT refunded
  * automatically — deposit policy is the store's call, so the system just files the order for
  * Ops to settle. `scope` is the booking's, in the query string.
+ *
+ * Like Release, a pre-order outside `scope` is skipped rather than failing the whole call —
+ * reported back in `warnings`, which the caller has to surface: it is the only sign that
+ * "cancelled" is smaller than every pre-order the hostess could see on screen.
  */
-export async function cancelReservationOrders(reservationNo: string, note: string, scope: SiteScope): Promise<number> {
-  const res = await http.post<ApiEnvelope<{ reservationNo: string; cancelled: number }>>(
+export async function cancelReservationOrders(
+  reservationNo: string,
+  note: string,
+  scope: SiteScope,
+): Promise<ReservationCancelResult> {
+  const res = await http.post<ApiEnvelope<{ reservationNo: string; cancelled: number; warnings?: string[] }>>(
     `/api/OrderHub/Reservation/${encodeURIComponent(reservationNo)}/Cancel`,
     { note },
     { params: scopeParams(scope) },
   );
-  return res.data.data?.cancelled ?? 0;
+  return {
+    reservationNo: res.data.data?.reservationNo ?? reservationNo,
+    cancelled: res.data.data?.cancelled ?? 0,
+    warnings: res.data.data?.warnings ?? [],
+  };
 }

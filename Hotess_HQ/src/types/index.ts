@@ -552,6 +552,14 @@ export interface ReservationReleaseResult {
   warnings: string[];
 }
 
+/** Result of POST api/OrderHub/Reservation/{no}/Cancel. */
+export interface ReservationCancelResult {
+  reservationNo: string;
+  cancelled: number;
+  /** e.g. a pre-order left uncancelled because it belongs to another station (SPEC-06 R-10). */
+  warnings: string[];
+}
+
 // ---- Auth (LoginResponseDTO / Users entity) ----
 
 export interface AuthUser {

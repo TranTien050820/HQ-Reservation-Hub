@@ -620,11 +620,14 @@ export function SeatingScreen() {
   const cancelPreOrders = async (target: PreOrderTarget) => {
     setCancelling(true);
     try {
-      const cancelled = await cancelReservationOrders(target.reservationNo, 'GUEST_CANCELLED_AT_CHECKIN', target.scope);
+      const result = await cancelReservationOrders(target.reservationNo, 'GUEST_CANCELLED_AT_CHECKIN', target.scope);
       preOrdersChanged();
       // Anything already released is out of reach here, so 0 is a real answer, not a no-op.
-      if (cancelled > 0) toast.success(t('preorder.cancelSuccess', { count: cancelled }));
+      if (result.cancelled > 0) toast.success(t('preorder.cancelSuccess', { count: result.cancelled }));
       else toast.info(t('preorder.cancelNothing'));
+      // A pre-order left uncancelled because it belongs to another station (SPEC-06 R-10) —
+      // surfaced the same way Release does, so it is never mistaken for "all of it is off".
+      if (result.warnings.length > 0) toast.error(result.warnings.join(' '));
       setReleaseRetry(null);
     } catch (err) {
       // The server's reason rather than axios' status-code sentence (same as Release above).
