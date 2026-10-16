@@ -26,8 +26,13 @@ export interface SiteScope {
   statNum: number;
 }
 
-/** ReservationBookingStatus: 1=New 2=Confirm 3=Cancel 4=Reserved 5=Overdue 6=Seated 7=NoShow 8=Close 9=AutoClose 10=AutoCancel */
+/** ReservationBookingStatus: 0=Reject 1=New 2=Confirm 3=Cancel 4=Reserved 5=Overdue 6=Seated 7=NoShow 8=Close 9=AutoClose 10=AutoCancel 11=AutoReject */
 export const BookingStatus = {
+  /**
+   * The restaurant turned a New booking down. A real status, not "no status": `0` and a
+   * missing status are different things, so never read one as the other (`status ?? 0`).
+   */
+  Reject: 0,
   New: 1,
   Confirm: 2,
   Cancel: 3,
@@ -48,6 +53,11 @@ export const BookingStatus = {
    */
   AutoClose: 9,
   AutoCancel: 10,
+  /**
+   * A New booking whose hold ran out before the restaurant answered (the hold-expiry job with
+   * "auto reject"). Closed business like Reject(0) — both release any table the guest picked.
+   */
+  AutoReject: 11,
 } as const;
 export type BookingStatusValue = (typeof BookingStatus)[keyof typeof BookingStatus];
 
@@ -56,8 +66,13 @@ export type BookingStatusValue = (typeof BookingStatus)[keyof typeof BookingStat
  * purpose: they must not be surfaced in this app, and every call site already
  * guards on a missing entry (`{cfg && <chip/>}`), so leaving them out is what
  * makes "don't show these" hold everywhere rather than at each render site.
+ *
+ * Reject(0) and AutoReject(11) do carry one: they end a booking the guest still
+ * believes in ("tôi có đặt bàn mà"), so wherever such a booking is shown the
+ * hostess has to read WHY it is dead — the restaurant said no, or never answered.
  */
 export const BOOKING_STATUS_CONFIG: Record<number, { label: string; color: string }> = {
+  0: { label: 'status.reject', color: '#b91c1c' },
   1: { label: 'status.new', color: '#64748b' },
   2: { label: 'status.confirm', color: '#3b82f6' },
   3: { label: 'status.cancel', color: '#ef4444' },
@@ -66,6 +81,7 @@ export const BOOKING_STATUS_CONFIG: Record<number, { label: string; color: strin
   6: { label: 'status.seated', color: '#22c55e' },
   7: { label: 'status.noshow', color: '#dc2626' },
   8: { label: 'status.close', color: '#475569' },
+  11: { label: 'status.autoReject', color: '#9a3412' },
 };
 
 /** ReservationWaitlistStatus: 0=Waiting 1=Confirmed 2=Reserved(seated) 3=Cancelled 4=Expired */
@@ -105,6 +121,11 @@ export interface ReservationZone {
   durationMinutes?: number;
   isPauseBooking?: number;
   isActive?: number;
+  /**
+   * 1 = the station's default zone: a booking sent without ZoneID lands here and draws its
+   * capacity from it. Absent from link configs cached before the column was sent.
+   */
+  isPrimary?: number | null;
 }
 
 // ---- Serving periods (BookingPeriodDTO / BookingPeriodRuleDTO / BookingDateOverrideDTO) ----
@@ -196,6 +217,12 @@ export interface ReserSeatTableItem {
   reserTable?: number | null;
   reserDate?: string | null;
   isActive?: number | null;
+  /**
+   * The table's minimum spend / surcharge AS IT WAS when it was assigned (YC1) — later price
+   * changes do not move it. Null on rows written before table charges existed.
+   */
+  minimumCharge?: number | null;
+  surcharge?: number | null;
 }
 
 /** Payload item for creating/replacing a booking's seat tables (ReserSeatTableItemDTO). */
@@ -284,6 +311,32 @@ export interface ReservationBooking {
   dateCreated?: string | null;
   seatTables?: ReserSeatTableItem[] | null;
   extraValues?: ReservationExtraValueItem[] | null;
+  /**
+   * YC5 — guests in the party who are not charged (children, invited guests), 0..partySize.
+   * They still take a seat: capacity is drawn by `partySize` either way. Not to be confused
+   * with the check-in screen's `freeSeatsNow`, which counts EMPTY seats on the floor.
+   *
+   * This and every charge / waiver field below is null or absent until the store's database
+   * has the new columns, so read each one as "maybe not there".
+   */
+  freeSeats?: number | null;
+  /**
+   * YC1 — Σ minimum spend of the booking's active tables, snapshotted by the server when the
+   * tables were assigned (a later price change does not move it). 0 while no table is held.
+   */
+  minimumChargeAmount?: number | null;
+  /** Σ surcharge of those tables before any waiver — what a waiver gave away. */
+  surchargeBase?: number | null;
+  /** The surcharge actually owed: 0 when waived, otherwise `surchargeBase`. */
+  surchargeAmount?: number | null;
+  /** YC3 — 1 when staff waived the surcharge (VIP). Server-checked against the staff JWT. */
+  isSurchargeWaived?: number | null;
+  surchargeWaiveReason?: string | null;
+  /** UserId of whoever waived it (from their JWT, never from the body). */
+  surchargeWaivedBy?: number | null;
+  surchargeWaivedAt?: string | null;
+  /** Joined by the GET list only — a PUT echo leaves it out. */
+  surchargeWaivedByName?: string | null;
 }
 
 export interface CreateReservationBookingRequest {
@@ -306,15 +359,32 @@ export interface CreateReservationBookingRequest {
   userCreated?: number;
   /** userId of the logged-in hostess doing the seating. */
   userSeat?: number;
+  /**
+   * On a PUT this REPLACES the booking's tables. `[]` is meaningful: confirming a New booking
+   * with `seatTables: []` lets go of the tables the guest pre-picked (YC2) instead of keeping
+   * them as a Reserved booking.
+   */
   seatTables?: SeatTableItem[];
   /** Answers to the store's ExtraFieldConfigs — one item per visible field. */
   extraValues?: ExtraValueItem[];
+  /** YC5 — 0..partySize; the server answers 400 FREE_SEATS_INVALID outside that. Left out = 0 / unchanged. */
+  freeSeats?: number;
+  /**
+   * YC3 — 0 | 1. Only send it when the hostess actually CHANGED it: the server checks the
+   * waive permission (403 SURCHARGE_WAIVE_FORBIDDEN) only on a change, and left out means
+   * "unchanged" on a PUT.
+   */
+  isSurchargeWaived?: number;
+  /** Required (≤ 255 chars) when turning the waiver on — 400 SURCHARGE_WAIVE_REASON_REQUIRED otherwise. */
+  surchargeWaiveReason?: string;
 }
 
 export type UpdateReservationBookingRequest = Partial<Omit<CreateReservationBookingRequest, 'userCreated'>> & {
   globalId: number;
   /** userId of the hostess confirming a New booking — sent with `status: Confirm`. */
   userConfirm?: number;
+  /** Stamped as the booking's last editor — sent by edits that are not a status move (e.g. a waiver). */
+  userModified?: number;
 };
 
 export interface ReservationBookingFilters extends Partial<SiteScope> {
@@ -336,6 +406,45 @@ export interface AvailableSlot {
   numberOfUsed?: number;
   numberOfUnused?: number;
   arrivalDate?: string;
+}
+
+// ---- Slot pool availability (SlotPoolAvailabilityDTO — GET api/ReservationSlotPools/availability) ----
+
+/** A serving period one pool can still take a guest in on the asked date — an `availablePeriods[]` item. */
+export interface SlotPoolPeriodAvailability {
+  periodID: number;
+  periodName?: string | null;
+  /** "HH:mm:ss". */
+  startTime?: string | null;
+  endTime?: string | null;
+  crossDay?: number | null;
+  /** The largest party this pool can still take in this period. */
+  bookable: number;
+}
+
+/**
+ * One slot pool that can serve the asked zone / channel / time.
+ *
+ * `bookable` is the number to act on: the largest party a booking can still get from THIS pool,
+ * worked out by the server down the pool's own allocation tree. A booking draws all its seats
+ * from exactly one pool, so "can we take a party of N" is `MAX(bookable) >= N` over the rows —
+ * never the sum. The per-tier remainders are context: how they combine depends on the pool's
+ * tree, so never rebuild `bookable` from them.
+ */
+export interface SlotPoolAvailability {
+  poolID: number;
+  poolName?: string | null;
+  isPauseBooking?: number;
+  /** What the pool itself still has, before any allocation below it. */
+  poolUnused: number;
+  /** Remainder of the channel / period limit on this pool's path; null when that tier does not bind. */
+  channelUnused?: number | null;
+  periodUnused?: number | null;
+  bookable: number;
+  /** The period the server resolved from `time`; null when no `time` was sent. */
+  matchedPeriodID?: number | null;
+  matchedPeriodName?: string | null;
+  availablePeriods?: SlotPoolPeriodAvailability[] | null;
 }
 
 // ---- Waitlists (ReservationWaitlists entity) ----
@@ -618,6 +727,40 @@ export function canEditPreOrders(roles: AuthRole[] | null | undefined): boolean 
   });
 }
 
+/**
+ * The `UserRole` row that lets staff waive a booking's table surcharge ("Miễn phụ thu", YC3 —
+ * `SqlReport/ReservationTableCharges-Migration.sql`). The migration grants it to no group; an
+ * admin hands it out per group at /user-manager/groups (CanUpdate = 1), and the account logs
+ * in again to pick it up.
+ */
+export const SURCHARGE_WAIVE_ROLE = 'Reservation Surcharge Waive';
+
+/**
+ * The second admin row the server lets through for the waiver, beside `All` — and the one
+ * HQ_FE_V2's `usePermission` also honours, so one account sees the same switch in both apps.
+ */
+const SUPER_ADMIN_ROLE = 'Super Admin';
+
+/**
+ * Whether these roles may turn a booking's surcharge waiver on or off.
+ *
+ * Same fail-CLOSED rule as `canEditPreOrders`: no stored roles reads as "not allowed". This
+ * only decides whether the switch is drawn — the server checks the staff JWT on every CHANGE
+ * of the flag and answers 403 SURCHARGE_WAIVE_FORBIDDEN otherwise, so a stale "yes" here
+ * costs a refused tap, never a waiver nobody was entitled to give.
+ */
+export function canWaiveSurcharge(roles: AuthRole[] | null | undefined): boolean {
+  return (roles ?? []).some((role) => {
+    const name = role.roleName?.trim().toLowerCase();
+    const named =
+      name === SURCHARGE_WAIVE_ROLE.toLowerCase() ||
+      name === WILDCARD_ROLE.toLowerCase() ||
+      name === SUPER_ADMIN_ROLE.toLowerCase() ||
+      role.category?.trim().toLowerCase() === WILDCARD_ROLE.toLowerCase();
+    return named && role.canUpdate !== 0;
+  });
+}
+
 export interface AuthSite {
   siteId: number;
 }
@@ -632,6 +775,22 @@ export interface LoginResponseData {
 }
 
 // ---- Store/link context (ReservationConfigDTO, subset used by the hostess app) ----
+
+/**
+ * One table's charges at this station (YC1, `ReservationTableCharges`) — the link config's
+ * `tableCharges[]`, which lists only tables with a non-zero charge. A table missing from the
+ * list costs nothing extra.
+ *
+ * These are TODAY's prices, for showing on the floor plan. What a booking owes is the snapshot
+ * the server took when its tables were assigned (`minimumChargeAmount` / `surchargeAmount`).
+ */
+export interface TableCharge {
+  tableNum: number;
+  /** The least the table's bill may come to (VND); the guest pays the difference below it. */
+  minimumCharge?: number | null;
+  /** A fixed amount charged on top of the food for sitting at this table (VND). */
+  surcharge?: number | null;
+}
 
 export interface LinkInfo {
   siteId: number;
@@ -657,4 +816,6 @@ export interface LinkInfo {
   periods: ReservationPeriod[];
   periodRules: ReservationPeriodRule[];
   dateOverrides: ReservationDateOverride[];
+  /** Empty when the store set no table charges — or runs an API without them. */
+  tableCharges: TableCharge[];
 }

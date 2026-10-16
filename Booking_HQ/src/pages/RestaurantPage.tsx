@@ -1,11 +1,11 @@
-import { useEffect, useMemo, useState } from 'react';
+import { useCallback, useEffect, useMemo, useState } from 'react';
 import { Link, useNavigate, useSearchParams } from 'react-router-dom';
 import { useTranslation } from 'react-i18next';
 import SearchBar, { type SearchValues } from '../components/SearchBar';
 import DateStrip from '../components/DateStrip';
 import { useStoreData } from '../store/StoreDataContext';
-import { useMenu } from '../api/queries';
-import { buildPeriodAvailability, periodsForDate, type TimeSlot } from '../lib/slots';
+import { useMenu, useSlotPoolAvailability } from '../api/queries';
+import { bookableByPeriod, buildPeriodAvailability, periodsForDate, type TimeSlot } from '../lib/slots';
 import { restaurantCuisine, restaurantPhoto } from '../lib/restaurantImages';
 import { menuItemPhoto } from '../lib/menuImages';
 import { formatDateHeading, resolveLocale } from '../lib/i18nFormat';
@@ -20,6 +20,7 @@ export default function RestaurantPage() {
   const partySize = Number(searchParams.get('partySize') ?? '2');
 
   const settings = data?.settings;
+  const linkInfo = data?.linkInfo;
   const zones = useMemo(() => data?.zones ?? [], [data]);
   const periods = useMemo(() => data?.periods ?? [], [data]);
   const rules = useMemo(() => data?.periodRules ?? [], [data]);
@@ -52,31 +53,68 @@ export default function RestaurantPage() {
     [availablePeriods, date],
   );
 
-  // Default the period dropdown to the first one that actually has bookable times,
-  // and re-pick whenever the date changes and the previous choice no longer applies.
+  const selectedZone = zones.find((z) => z.zoneID === selectedZoneId) ?? null;
+  const zoneIsBookable = !selectedZone || !selectedZone.isPauseBooking;
+
+  // Live seats for the chosen seating area on this date, through this link's channel — the one
+  // capacity figure that holds for every allocation tree. Asked without a time, so each pool row
+  // lists the periods it still has room in. No seating area (a store without zones) means nothing
+  // to ask: such a booking takes no capacity.
+  const availability = useSlotPoolAvailability(
+    linkInfo && selectedZone && zoneIsBookable
+      ? {
+          siteId: linkInfo.siteId,
+          sNum: linkInfo.sNum,
+          statNum: linkInfo.statNum,
+          date,
+          zoneId: selectedZone.zoneID,
+          channelId: linkInfo.channelId,
+          channelPartnerId: linkInfo.channelPartnerID ?? undefined,
+        }
+      : null,
+  );
+  const periodBookable = useMemo(
+    () => (availability.data ? bookableByPeriod(availability.data) : null),
+    [availability.data],
+  );
+  // A period that can't seat this party. Not known (still loading, or the check failed) counts as
+  // open: the booking page asks again for the exact time before anything is sent.
+  const isPeriodFull = useCallback(
+    (periodID: number) => periodBookable != null && (periodBookable.get(periodID) ?? 0) < partySize,
+    [periodBookable, partySize],
+  );
+
+  // Default the period dropdown to the first one that actually has bookable times and room for
+  // this party, and re-pick whenever the date, area or party size means the previous choice no
+  // longer applies.
   useEffect(() => {
     setSelectedPeriodId((current) => {
-      if (current && periodAvailability.some((entry) => entry.period.periodID === current)) return current;
-      return periodAvailability[0]?.period.periodID ?? null;
+      const open = periodAvailability.filter((entry) => !isPeriodFull(entry.period.periodID));
+      if (current && open.some((entry) => entry.period.periodID === current)) return current;
+      return (open[0] ?? periodAvailability[0])?.period.periodID ?? null;
     });
-  }, [periodAvailability]);
+  }, [periodAvailability, isPeriodFull]);
 
   const selectedPeriodAvailability =
     periodAvailability.find((entry) => entry.period.periodID === selectedPeriodId) ?? periodAvailability[0] ?? null;
-  const selectedZone = zones.find((z) => z.zoneID === selectedZoneId) ?? null;
-  const zoneIsBookable = !selectedZone || (!selectedZone.isPauseBooking && (selectedZone.availableSlots ?? 1) > 0);
+  const allPeriodsFull =
+    periodAvailability.length > 0 && periodAvailability.every((entry) => isPeriodFull(entry.period.periodID));
 
   // Why guests might see no times: either the restaurant simply isn't open/bookable
   // on this date (no period runs, or every remaining slot today has already passed),
-  // or the chosen seating area has no remaining capacity. Surface the right reason
-  // instead of a generic empty state.
+  // or the chosen seating area has no room left — none at all, or just not enough for
+  // this party. Surface the right reason instead of a generic empty state.
   const unavailableReason = !zoneIsBookable
     ? t('restaurant.noBookableZone')
-    : periodAvailability.length === 0
-      ? availablePeriods.length === 0
-        ? t('restaurant.noBookableNoPeriod')
-        : t('restaurant.noBookableNoTime')
-      : null;
+    : allPeriodsFull
+      ? periodAvailability.some((entry) => (periodBookable?.get(entry.period.periodID) ?? 0) > 0)
+        ? t('restaurant.noBookablePartySize', { partySize })
+        : t('restaurant.noBookableZone')
+      : periodAvailability.length === 0
+        ? availablePeriods.length === 0
+          ? t('restaurant.noBookableNoPeriod')
+          : t('restaurant.noBookableNoTime')
+        : null;
 
   const handleSearch = (values: SearchValues) => {
     setSearchParams({ date: values.date, partySize: String(values.partySize) });
@@ -161,20 +199,26 @@ export default function RestaurantPage() {
             <h3 className="mb-3 text-sm font-semibold uppercase text-neutral-500">{t('restaurant.availableTimes')}</h3>
             {periodAvailability.length > 1 && (
               <div className="-mx-6 mb-4 flex gap-2 overflow-x-auto px-6 pb-1 sm:mx-0 sm:flex-wrap sm:px-0 sm:pb-0">
-                {periodAvailability.map(({ period }) => (
-                  <button
-                    key={period.periodID}
-                    type="button"
-                    onClick={() => setSelectedPeriodId(period.periodID)}
-                    className={`shrink-0 rounded-full border px-4 py-1.5 text-sm font-medium transition-colors ${
-                      selectedPeriodId === period.periodID
-                        ? 'border-resy-red bg-resy-red text-white'
-                        : 'border-neutral-200 text-neutral-700 hover:border-neutral-400'
-                    }`}
-                  >
-                    {period.periodName}
-                  </button>
-                ))}
+                {periodAvailability.map(({ period }) => {
+                  // Every time in a period shares its count, so a full period greys out as a whole.
+                  const full = isPeriodFull(period.periodID);
+                  return (
+                    <button
+                      key={period.periodID}
+                      type="button"
+                      disabled={full}
+                      onClick={() => setSelectedPeriodId(period.periodID)}
+                      className={`shrink-0 rounded-full border px-4 py-1.5 text-sm font-medium transition-colors disabled:cursor-not-allowed disabled:opacity-50 ${
+                        selectedPeriodId === period.periodID
+                          ? 'border-resy-red bg-resy-red text-white'
+                          : 'border-neutral-200 text-neutral-700 hover:border-neutral-400'
+                      }`}
+                    >
+                      {period.periodName}
+                      {full && <span className="ml-1.5 text-xs">{t('restaurant.full')}</span>}
+                    </button>
+                  );
+                })}
               </div>
             )}
 

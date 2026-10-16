@@ -234,3 +234,19 @@ export const RefundIcon = (p: IconProps) => (
     <path d="M12 8.5v7M10 10.7h4M10 13.3h4" />
   </Icon>
 );
+
+/** The zone drawn as its floor plan, as opposed to the card grid (`LayoutIcon`). */
+export const FloorMapIcon = (p: IconProps) => (
+  <Icon {...p}>
+    <rect x="3" y="3" width="18" height="18" rx="2" />
+    <path d="M3 11h6v10" />
+    <circle cx="15.5" cy="15.5" r="2.4" />
+    <rect x="13" y="6" width="5" height="3" rx="0.8" />
+  </Icon>
+);
+
+export const CloseIcon = (p: IconProps) => (
+  <Icon {...p}>
+    <path d="M6 6l12 12M18 6 6 18" />
+  </Icon>
+);

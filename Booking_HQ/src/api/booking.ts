@@ -33,6 +33,9 @@ export interface BookingLinkInfo {
   sNum: number;
   statNum: number;
   channelId: number;
+  /** Partner of the channel this link sells for; null = a plain channel link. Sent back on availability checks. */
+  channelPartnerID?: number | null;
+  channelPartnerName?: string | null;
 }
 
 export interface BookingChannel {

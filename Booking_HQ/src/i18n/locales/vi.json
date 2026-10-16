@@ -117,6 +117,8 @@
     "noBookableZone": "Khu vực này đã hết bàn cho ngày bạn chọn — hãy thử khu vực hoặc ngày khác.",
     "noBookableNoPeriod": "Nhà hàng này không nhận đặt bàn trực tuyến cho ngày bạn chọn.",
     "noBookableNoTime": "Không còn giờ trống cho ngày này — hãy thử ngày khác.",
+    "noBookablePartySize": "Khu vực này không còn đủ chỗ cho {{partySize}} khách vào ngày bạn chọn — hãy thử ít khách hơn, khu vực hoặc ngày khác.",
+    "full": "Hết chỗ",
     "about": "Giới thiệu về {{name}}",
     "aboutText": "Một địa điểm {{cuisine}} nổi tiếng với thực đơn theo mùa và không gian ấm cúng. Đặt bàn trực tuyến và chúng tôi sẽ giữ bàn cho bạn — không cần gọi điện. Vui lòng đến trong vòng 15 phút sau giờ đặt để giữ chỗ.",
     "goodToKnow": "Lưu ý",
@@ -175,7 +177,10 @@
     "partySize": "Số khách",
     "seating": "Khu vực",
     "guests": "khách",
-    "extraFieldRequired": "Vui lòng nhập thông tin này"
+    "extraFieldRequired": "Vui lòng nhập thông tin này",
+    "soldOut": "Giờ này đã hết chỗ. Vui lòng quay lại chọn giờ hoặc khu vực khác.",
+    "notEnoughSeats": "Giờ này chỉ còn nhận đoàn tối đa {{bookable}} khách — không đủ cho {{partySize}} khách. Vui lòng quay lại chọn giờ hoặc khu vực khác.",
+    "periodClosed": "Nhà hàng không nhận đặt bàn vào giờ này. Vui lòng quay lại chọn giờ khác."
   },
   "confirmation": {
     "title": "Đặt bàn thành công!",
@@ -224,7 +229,7 @@
     "status": {
       "1": "Chờ xác nhận",
       "2": "Đã xác nhận",
-      "3": "Nhà hàng đã hủy",
+      "3": "Đã hủy",
       "4": "Đã xếp chỗ",
       "5": "Đã trễ",
       "6": "Đã đến",

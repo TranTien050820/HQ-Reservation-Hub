@@ -1,5 +1,19 @@
-const ACCESS_KEY = 'hotess.accessToken';
-const REFRESH_KEY = 'hotess.refreshToken';
+/**
+ * Tokens are kept per API host. A session is only good on the API that issued it: a deployment
+ * verifies with its own `Jwt:Key`, and `refresh-token` answers a token it cannot verify with a
+ * 500 — which the HTTP layer rightly reads as a bad minute, not a dead session. So a build
+ * re-pointed at another host (hq-api-bo → api-dev-hq) kept the hostess "logged in" while every
+ * JWT call — the booking's pre-orders, Release, Cancel — failed for good. Keyed by host, that
+ * build starts at the login screen instead.
+ */
+const API_HOST = (import.meta.env.VITE_API_BASE_URL || 'same-origin').replace(/\/+$/, '');
+const ACCESS_KEY = `hotess.accessToken@${API_HOST}`;
+const REFRESH_KEY = `hotess.refreshToken@${API_HOST}`;
+
+// The unscoped keys of earlier builds are never read again — drop the 7-day refresh token
+// rather than leave it lying in storage.
+localStorage.removeItem('hotess.accessToken');
+localStorage.removeItem('hotess.refreshToken');
 
 export function getTokens() {
   return {

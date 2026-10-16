@@ -1,4 +1,9 @@
-import type { ReservationDateOverride, ReservationPeriod, ReservationPeriodRule } from '../api/types';
+import type {
+  ReservationDateOverride,
+  ReservationPeriod,
+  ReservationPeriodRule,
+  SlotPoolAvailability,
+} from '../api/types';
 
 /** Returns "yyyy-MM-dd" for today, in local time. */
 export function todayDateString(): string {
@@ -77,6 +82,31 @@ export function periodsForDate(
 export interface PeriodAvailability {
   period: ReservationPeriod;
   slots: TimeSlot[];
+}
+
+/**
+ * The largest party one booking can still get, from GET /api/ReservationSlotPools/availability:
+ * MAX of `bookable` over the pools, never the sum — a booking takes all its seats from a single
+ * pool. 0 when no pool serves the seating area.
+ */
+export function maxBookable(rows: SlotPoolAvailability[]): number {
+  return rows.reduce((max, row) => Math.max(max, row.bookable), 0);
+}
+
+/**
+ * The largest party each period can still take, by periodID, read from every pool's
+ * `availablePeriods` — again MAX over the pools, never the sum. Every time inside a period shares
+ * that period's count. A period missing from the map has no room left (or the server doesn't run
+ * it on that date).
+ */
+export function bookableByPeriod(rows: SlotPoolAvailability[]): Map<number, number> {
+  const best = new Map<number, number>();
+  for (const row of rows) {
+    for (const period of row.availablePeriods ?? []) {
+      best.set(period.periodID, Math.max(best.get(period.periodID) ?? 0, period.bookable));
+    }
+  }
+  return best;
 }
 
 /**

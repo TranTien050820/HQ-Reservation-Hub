@@ -8,6 +8,7 @@ import type {
   ReservationPeriod,
   ReservationPeriodRule,
   ReservationZone,
+  TableCharge,
   TableSetup,
   Section,
   ReserZoneSectionLink,
@@ -31,6 +32,8 @@ interface RawReservationConfig {
   periods?: ReservationPeriod[];
   periodRules?: ReservationPeriodRule[];
   dateOverrides?: ReservationDateOverride[];
+  /** YC1 — only tables with a non-zero charge; absent on an API that predates table charges. */
+  tableCharges?: TableCharge[] | null;
 }
 
 /** GET /api/ReservationLinks/Booking?publicKey=... — everything the hostess app needs for one store. */
@@ -54,5 +57,6 @@ export async function fetchLinkInfoByPublicKey(publicKey: string): Promise<LinkI
     periods: payload.periods ?? [],
     periodRules: payload.periodRules ?? [],
     dateOverrides: payload.dateOverrides ?? [],
+    tableCharges: payload.tableCharges ?? [],
   };
 }

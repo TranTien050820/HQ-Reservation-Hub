@@ -7,7 +7,7 @@ import { useToast } from '../components/ToastProvider';
 import { Spinner } from '../components/Spinner';
 import { QrScannerModal } from '../components/QrScannerModal';
 import { SearchResultsModal } from '../components/SearchResultsModal';
-import { ConfirmDialog } from '../components/ConfirmDialog';
+import { ChoiceDialog, ConfirmDialog } from '../components/ConfirmDialog';
 import {
   AlertIcon,
   ArmchairIcon,
@@ -20,13 +20,20 @@ import {
   UsersIcon,
 } from '../components/icons';
 import { lookupBookingsAnyDate, searchBookings, updateBooking } from '../api/bookings';
-import { fetchAvailableSlots } from '../api/availableSlots';
+import { fetchSlotPoolAvailability } from '../api/slotPoolAvailability';
 import { fetchWaitlists } from '../api/waitlists';
 import { usePreOrders } from '../hooks/usePreOrders';
-import { BookingStatus, WaitlistStatus, type ReservationBooking } from '../types';
+import {
+  BOOKING_STATUS_CONFIG,
+  BookingStatus,
+  WaitlistStatus,
+  type ReservationBooking,
+  type SlotPoolAvailability,
+} from '../types';
 import { apiErrorMessage } from '../utils/apiError';
-import { formatVnDate, todayStr, vnEpochMs } from '../utils/date';
-import { isTerminalBooking } from '../utils/bookingStatus';
+import { formatVnDate, formatVnHHmm, todayStr, vnEpochMs } from '../utils/date';
+import { isRejectedBooking, isTerminalBooking, pickedTablenumsOfNew } from '../utils/bookingStatus';
+import { partyText } from '../utils/charges';
 import { normalizeScan } from '../utils/scan';
 
 /** How many near-miss bookings the empty-result panel lists before it just gives a count. */
@@ -45,6 +52,51 @@ function byClosenessToToday(a: ReservationBooking, b: ReservationBooking): numbe
     Math.abs((vnEpochMs(booking.reservationDate) ?? 0) - today);
   return distance(a) - distance(b);
 }
+
+/**
+ * "Chỗ trống": how many more walk-in guests the floor can take right now, counting no seat twice.
+ *
+ * The old card added up AvailableSlots' `numberOfUnused` per zone, and each of those already
+ * contained the shared pool's remainder: two areas allowed 100 each out of a pool with 120 left
+ * showed 200 free. Now every zone is asked `/availability` exactly as a walk-in for it would be,
+ * and contributes its best row — MAX(bookable), since one booking draws from one pool. Zones
+ * landing on the same pool are added up but capped at what that pool (and the channel / period
+ * limit those zones share) still has; different pools are different seats, so they add.
+ *
+ * Exact for the usual setup — each zone in one pool, the parallel tree `ZONE;CHANNEL;PERIOD`
+ * every store runs today. A nested tree can make it read low (a channel limit under each zone
+ * looks pool-wide) or high (several zones falling through one "Còn lại" node). It is a door hint;
+ * the walk-in form asks the server about the actual party before anything is written.
+ */
+function freeSeatsNow(perZone: SlotPoolAvailability[][]): number {
+  const pools = new Map<number, { taken: number; left: number }>();
+  for (const rows of perZone) {
+    const best = rows.reduce<SlotPoolAvailability | null>(
+      (top, row) => (row.bookable > (top?.bookable ?? 0) ? row : top),
+      null,
+    );
+    if (!best) continue;
+    const left = Math.min(best.poolUnused, best.channelUnused ?? Infinity, best.periodUnused ?? Infinity);
+    const pool = pools.get(best.poolID) ?? { taken: 0, left: 0 };
+    pools.set(best.poolID, { taken: pool.taken + best.bookable, left: Math.max(pool.left, left) });
+  }
+  let free = 0;
+  for (const { taken, left } of pools.values()) free += Math.min(taken, left);
+  return free;
+}
+
+/**
+ * What becomes of the tables a New booking's guest picked ahead (YC2) when the hostess confirms
+ * it at the door:
+ * - `keep`: PUT 2 alone — the server keeps them and answers Reserved(4); seating opens with them picked.
+ * - `change`: the same PUT, so they stay held until a seating onto other tables replaces them, but
+ *   the seating screen opens with nothing picked — she chooses afresh.
+ * - `release`: PUT 2 with `seatTables: []` — a plain Confirm(2), the tables go back to the floor.
+ */
+type PickedTablesChoice = 'keep' | 'change' | 'release';
+
+/** "#5, #6" — the way every table list on these screens reads. */
+const tableList = (tablenums: number[]) => tablenums.map((n) => `#${n}`).join(', ');
 
 /** The four numbers a hostess is asked for at the door, before anyone searches anything. */
 interface DoorStats {
@@ -95,9 +147,10 @@ export function CheckinScreen() {
 
   /**
    * The door summary. Every number is counted server-side (`pageSize: 1`, read
-   * `totalRecords`) so this stays four small calls however busy the day is, and
-   * each one settles independently — a store with no OrderHub/slot data still
-   * gets the counts that did come back rather than an empty strip.
+   * `totalRecords`; one availability call per zone for the free seats) so this stays
+   * a handful of small calls however busy the day is, and each card settles
+   * independently — a store with no OrderHub/slot data still gets the counts that
+   * did come back rather than an empty strip.
    */
   useEffect(() => {
     if (!linkInfo) return;
@@ -107,8 +160,18 @@ export function CheckinScreen() {
     };
     const date = todayStr();
 
-    fetchAvailableSlots(linkInfo, date)
-      .then((slots) => set({ freeTables: slots.reduce((sum, s) => sum + (s.numberOfUnused ?? 0), 0) }))
+    // Same question as the walk-in form — this channel, this minute — for every zone still
+    // selling, combined by `freeSeatsNow`. Outside every serving period the server answers 400
+    // PERIOD_NOT_CONFIGURED, and the card shows "—" exactly as for any other failure.
+    const time = formatVnHHmm();
+    Promise.all(
+      linkInfo.zones
+        .filter((zone) => !zone.isPauseBooking)
+        .map((zone) =>
+          fetchSlotPoolAvailability(linkInfo, { date, zoneId: zone.zoneID, channelId: linkInfo.channelId, time }),
+        ),
+    )
+      .then((perZone) => set({ freeTables: freeSeatsNow(perZone) }))
       .catch(() => set({ freeTables: null }));
 
     fetchWaitlists(linkInfo, { expectedDate: date, status: WaitlistStatus.Waiting, pageSize: 1 })
@@ -170,28 +233,53 @@ export function CheckinScreen() {
     [linkInfo, t, toast],
   );
 
+  /**
+   * `pickTablesAgain` opens seating without pre-picking the tables the booking holds — the
+   * hostess said she is changing them.
+   */
   const openSeating = useCallback(
-    (booking: ReservationBooking) => {
-      navigate('../seating', { state: { booking } });
+    (booking: ReservationBooking, options?: { pickTablesAgain?: boolean }) => {
+      navigate('../seating', { state: { booking, pickTablesAgain: options?.pickTablesAgain === true } });
     },
     [navigate],
   );
 
-  /** The backend refuses New → Seated/Reserved (BOOKING_CONFIRM_REQUIRED), so "seat anyway" confirms first. */
+  /**
+   * The backend refuses New → Seated (BOOKING_CONFIRM_REQUIRED), so "seat anyway" confirms first.
+   *
+   * What the PUT answers is what is carried on, never an assumed Confirm: a New booking holding
+   * tables the guest picked ahead comes back Reserved(4) WITH them (YC2), and the seating screen
+   * treats a Reserved booking's tables as the guest's own.
+   */
   const confirmAndSeat = useCallback(
-    async (booking: ReservationBooking) => {
+    async (booking: ReservationBooking, picked: PickedTablesChoice = 'keep') => {
       if (!linkInfo) return;
       setIsConfirming(true);
       try {
-        await updateBooking({
+        const release = picked === 'release';
+        const saved = await updateBooking({
           globalId: booking.globalId,
           siteId: linkInfo.siteId,
           sNum: linkInfo.sNum,
           statNum: linkInfo.statNum,
           status: BookingStatus.Confirm,
           userConfirm: user?.userId,
+          // Confirm, but hand the pre-picked tables back instead of turning them into a Reserved hold.
+          ...(release ? { seatTables: [] } : {}),
         });
-        openSeating({ ...booking, status: BookingStatus.Confirm });
+        const savedStatus = Number(saved?.status);
+        openSeating(
+          {
+            ...booking,
+            status: saved?.status != null && Number.isFinite(savedStatus) ? savedStatus : BookingStatus.Confirm,
+            ...(release ? { seatTables: [] } : {}),
+            // Re-snapshotted by the server with the tables (YC1): kept with them, zeroed without.
+            minimumChargeAmount: saved?.minimumChargeAmount ?? booking.minimumChargeAmount,
+            surchargeBase: saved?.surchargeBase ?? booking.surchargeBase,
+            surchargeAmount: saved?.surchargeAmount ?? booking.surchargeAmount,
+          },
+          { pickTablesAgain: picked === 'change' },
+        );
       } catch (err) {
         // A full zone or a booking changed elsewhere — say what the backend said.
         toast.error(apiErrorMessage(err, t('checkin.confirmError')));
@@ -218,6 +306,15 @@ export function CheckinScreen() {
     },
     [openSeating],
   );
+
+  /** Tables the New booking awaiting confirmation holds because its guest picked them ahead. */
+  const unconfirmedPicked = unconfirmed ? pickedTablenumsOfNew(unconfirmed) : [];
+
+  const confirmUnconfirmed = (picked: PickedTablesChoice) => {
+    const booking = unconfirmed;
+    setUnconfirmed(null);
+    if (booking) void confirmAndSeat(booking, picked);
+  };
 
   useEffect(() => {
     if (isSearching || !searched || results.length !== 1) return;
@@ -344,17 +441,21 @@ export function CheckinScreen() {
                       <p className="flex flex-wrap items-baseline gap-x-2 text-sm font-semibold text-ink">
                         {b.bookingName}
                         <span className="text-xs font-normal text-muted">
-                          {b.bookingPhone} · {b.partySize}p
+                          {b.bookingPhone} · {partyText(b, t)}
                         </span>
                       </p>
                       <p className="mt-0.5 text-xs text-muted">
                         <span className="font-mono">{b.reservationNo}</span> ·{' '}
                         {/* "Đã huỷ" wins over "ngày khác": a cancelled booking dated last week
                             is not a guest who came on the wrong day, and showing only the date
-                            invites the hostess to seat them anyway. */}
-                        {isTerminalBooking(b.status)
-                          ? t('checkin.missClosed', { when: whenOf(b) })
-                          : t('checkin.missOtherDate', { when: whenOf(b) })}
+                            invites the hostess to seat them anyway. A turned-down booking says
+                            which way it died — the restaurant said no, or never answered — since
+                            that is what she tells a guest who believes he has a table. */}
+                        {isRejectedBooking(b.status)
+                          ? `${t(BOOKING_STATUS_CONFIG[Number(b.status)]?.label ?? 'status.reject')} · ${whenOf(b)}`
+                          : isTerminalBooking(b.status)
+                            ? t('checkin.missClosed', { when: whenOf(b) })
+                            : t('checkin.missOtherDate', { when: whenOf(b) })}
                       </p>
                     </div>
                   ))}
@@ -440,22 +541,55 @@ export function CheckinScreen() {
           setSearched(false);
         }}
       />
-      <ConfirmDialog
-        open={!!unconfirmed}
-        title={t('checkin.notConfirmedTitle')}
-        message={t('checkin.notConfirmedMsg', {
-          name: unconfirmed?.bookingName ?? '',
-          code: unconfirmed?.reservationNo ?? '',
-        })}
-        confirmLabel={t('checkin.confirmAndSeat')}
-        cancelLabel={t('common.no')}
-        onConfirm={() => {
-          const booking = unconfirmed;
-          setUnconfirmed(null);
-          if (booking) void confirmAndSeat(booking);
-        }}
-        onCancel={() => setUnconfirmed(null)}
-      />
+      {/* A New booking that holds tables the guest picked ahead (YC2) gets three ways to be
+          confirmed — the tables are the guest's expectation, so what happens to them is asked,
+          not assumed. Any other New booking keeps the single "Xác nhận & xếp chỗ". */}
+      {unconfirmedPicked.length > 0 ? (
+        <ChoiceDialog
+          open={!!unconfirmed}
+          title={t('checkin.notConfirmedTitle')}
+          message={t('checkin.notConfirmedPickedMsg', {
+            name: unconfirmed?.bookingName ?? '',
+            code: unconfirmed?.reservationNo ?? '',
+            tables: tableList(unconfirmedPicked),
+          })}
+          choices={[
+            {
+              key: 'keep',
+              label: t('checkin.confirmKeepTables'),
+              hint: t('checkin.confirmKeepTablesHint', { tables: tableList(unconfirmedPicked) }),
+              onSelect: () => confirmUnconfirmed('keep'),
+            },
+            {
+              key: 'change',
+              label: t('checkin.confirmChangeTables'),
+              hint: t('checkin.confirmChangeTablesHint'),
+              onSelect: () => confirmUnconfirmed('change'),
+            },
+            {
+              key: 'release',
+              label: t('checkin.confirmReleaseTables'),
+              hint: t('checkin.confirmReleaseTablesHint', { tables: tableList(unconfirmedPicked) }),
+              onSelect: () => confirmUnconfirmed('release'),
+            },
+          ]}
+          cancelLabel={t('common.back')}
+          onCancel={() => setUnconfirmed(null)}
+        />
+      ) : (
+        <ConfirmDialog
+          open={!!unconfirmed}
+          title={t('checkin.notConfirmedTitle')}
+          message={t('checkin.notConfirmedMsg', {
+            name: unconfirmed?.bookingName ?? '',
+            code: unconfirmed?.reservationNo ?? '',
+          })}
+          confirmLabel={t('checkin.confirmAndSeat')}
+          cancelLabel={t('common.no')}
+          onConfirm={() => confirmUnconfirmed('keep')}
+          onCancel={() => setUnconfirmed(null)}
+        />
+      )}
     </div>
   );
 }

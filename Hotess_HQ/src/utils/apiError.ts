@@ -105,6 +105,29 @@ export function tableRefusalOf(error: unknown): TableRefusal | null {
   };
 }
 
+/**
+ * The store's POS could not be reached at all: no PosLocalAgent of the station connected to HQ,
+ * the agent not answering in time, or — on a NAT station — the port refusing the handshake. A
+ * seating is refused before HQ writes anything, so the same tap is safe to send again once the
+ * POS is back.
+ *
+ * The server's sentence for it is written for engineers ("agent:0 … không phản hồi trong 0ms.
+ * Chi tiết: Agent cua station 1:9:8 khong noi hub") and tells the floor nothing it can act on.
+ * OrderHub endpoints flag it with `POS_UNREACHABLE`; the reservation seat path still folds it
+ * into `POS_LOCAL_ERROR` beside real POS refusals (no free table left, day not started) whose
+ * own sentence IS the explanation. There the one thing that tells them apart is the fixed
+ * opening `PosLocalUnreachableException` puts on every such message.
+ */
+export const POS_UNREACHABLE = 'POS_UNREACHABLE';
+const POS_UNREACHABLE_OPENING = /^POS local không kết nối được/i;
+
+export function isPosUnreachable(error: unknown): boolean {
+  if (apiErrorCode(error) === POS_UNREACHABLE) return true;
+  if (!axios.isAxiosError(error)) return false;
+  const message = messageFromBody(error.response?.data) ?? textFrom(error.message);
+  return message != null && POS_UNREACHABLE_OPENING.test(message);
+}
+
 /** Minimal shape of i18next's `t`, so this stays a plain function callers can use anywhere. */
 type Translate = (key: string, options?: Record<string, unknown>) => string;
 
@@ -129,6 +152,50 @@ export function tableRefusalMessage(refusal: TableRefusal, t: Translate, pickedT
   const nums = refusal.tableNum != null ? [refusal.tableNum] : pickedTablenums;
   const key = TABLE_REFUSAL_KEYS[refusal.reason ?? ''] ?? 'seating.refusedTable';
   return t(key, { tables: nums.map((n) => `#${n}`).join(', ') });
+}
+
+/**
+ * YC3 / YC5 — the booking write was refused over the surcharge waiver or the free-seat count,
+ * not over the seating itself. Nothing was written, so the same tap goes through once the field
+ * is put right; each code below therefore maps to a sentence that names the field to fix.
+ *
+ * - `SURCHARGE_WAIVE_FORBIDDEN` (403): this login's group lacks `Reservation Surcharge Waive` —
+ *   or the roles stored on the tablet are older than a change an admin just made.
+ * - `SURCHARGE_WAIVE_REASON_REQUIRED` / `_TOO_LONG` (400): turning the waiver on needs a reason, ≤ 255.
+ * - `SURCHARGE_WAIVE_LOCKED` (400): the booking is not New / Confirm / Reserved / Seated any more.
+ * - `SURCHARGE_WAIVE_FLAG_INVALID` (400): the flag was not 0 or 1 — this app only ever sends those,
+ *   so it means a bug here; treated like a refusal and put back.
+ * - `FREE_SEATS_INVALID` (400): free seats outside 0..partySize.
+ */
+export const SURCHARGE_WAIVE_FORBIDDEN = 'SURCHARGE_WAIVE_FORBIDDEN';
+export const SURCHARGE_WAIVE_REASON_REQUIRED = 'SURCHARGE_WAIVE_REASON_REQUIRED';
+export const SURCHARGE_WAIVE_REASON_TOO_LONG = 'SURCHARGE_WAIVE_REASON_TOO_LONG';
+export const SURCHARGE_WAIVE_LOCKED = 'SURCHARGE_WAIVE_LOCKED';
+export const SURCHARGE_WAIVE_FLAG_INVALID = 'SURCHARGE_WAIVE_FLAG_INVALID';
+export const FREE_SEATS_INVALID = 'FREE_SEATS_INVALID';
+
+const BOOKING_FIELD_REFUSAL_KEYS: Record<string, string> = {
+  [SURCHARGE_WAIVE_FORBIDDEN]: 'surcharge.errorForbidden',
+  [SURCHARGE_WAIVE_REASON_REQUIRED]: 'surcharge.reasonRequired',
+  [SURCHARGE_WAIVE_REASON_TOO_LONG]: 'surcharge.reasonTooLong',
+  [SURCHARGE_WAIVE_LOCKED]: 'surcharge.errorLocked',
+  [SURCHARGE_WAIVE_FLAG_INVALID]: 'surcharge.errorFlagInvalid',
+  [FREE_SEATS_INVALID]: 'freeSeats.invalid',
+};
+
+/**
+ * The waiver refusals after which the switch goes back to what the booking stores — the change
+ * cannot go through as asked, whatever is typed. (A missing / too-long reason is fixed in place.)
+ */
+export function isWaiverRefusalToRevert(error: unknown): boolean {
+  const code = apiErrorCode(error);
+  return code === SURCHARGE_WAIVE_FORBIDDEN || code === SURCHARGE_WAIVE_LOCKED || code === SURCHARGE_WAIVE_FLAG_INVALID;
+}
+
+/** The hostess's own-language sentence for a refused waiver / free-seat count; null for any other failure. */
+export function bookingFieldRefusalMessage(error: unknown, t: Translate): string | null {
+  const key = BOOKING_FIELD_REFUSAL_KEYS[apiErrorCode(error) ?? ''];
+  return key ? t(key) : null;
 }
 
 /** `fallback` is the caller's localized "something went wrong" line, used only when the failure says nothing. */

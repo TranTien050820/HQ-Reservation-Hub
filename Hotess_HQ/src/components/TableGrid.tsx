@@ -1,13 +1,27 @@
 import { useEffect, useMemo, useState, type ReactNode } from 'react';
 import { useTranslation } from 'react-i18next';
-import type { Section, TableSetup } from '../types';
-import { isTableBlocked, isTableReservable, type TableOccupancy } from '../utils/tableOccupancy';
+import type { Section, TableCharge, TableSetup } from '../types';
+import { shortChargeLabel } from '../utils/charges';
+import { isTableBlocked, type TableOccupancy } from '../utils/tableOccupancy';
+import { TABLE_STATE_LABEL, describeTable, tableStateOf, type TableDescriptor } from '../utils/tablePicker';
 import { ChevronDownIcon, MergeIcon, UsersIcon } from './icons';
 
 export type TableState = 'available' | 'upcoming' | 'reserved' | 'occupied' | 'overdue' | 'posOpen' | 'unavailable';
 
 /** Built by `buildTableOccupancy` — re-exported under the grid's own name for callers. */
 export type TableExtraInfo = TableOccupancy;
+
+/** What `renderMap` gets: the grid's own rules, so the map and the cards can never disagree. */
+export interface TableMapContext {
+  describe: (table: TableSetup) => TableDescriptor;
+  /** False when the Filters panel would hide the table from the cards — the map greys it out instead. */
+  matchesFilter: (table: TableSetup) => boolean;
+  readOnly: boolean;
+  partySize: number;
+  mergeMode: boolean;
+  /** "Tối thiểu 5tr · Phụ thu 500k", or null for a table with no charge — the same line the card shows. */
+  chargeLabel: (table: TableSetup) => string | null;
+}
 
 interface TableGridProps {
   tables: TableSetup[];
@@ -28,6 +42,18 @@ interface TableGridProps {
   readOnly?: boolean;
   /** Extra control (e.g. a "Suggested tables" trigger) rendered on the same row as the Filters button, to save vertical space. */
   filterBarExtra?: ReactNode;
+  /** The cards / floor map switch — first on the filter row, since it changes everything below it. */
+  viewSwitch?: ReactNode;
+  /**
+   * Today's minimum spend / surcharge per table (YC1, from the link config). Drawn as a small
+   * line on each card that has one; absent or empty means no table shows a charge.
+   */
+  tableCharges?: ReadonlyMap<number, TableCharge>;
+  /**
+   * Draws the zone as its floor map instead of cards. The filter bar, the merge switch and
+   * the rules for what may be picked stay here and reach the map through the context.
+   */
+  renderMap?: (ctx: TableMapContext) => ReactNode;
 }
 
 const CAPACITY_ALL = 'all';
@@ -41,17 +67,17 @@ type StatusFilter = TableState | 'merged' | 'all';
  * `.tbl-ink` inside the card picks up the matching text/dot colour.
  */
 const STATE_STYLES: Record<TableState, { card: string; label: string }> = {
-  available: { card: 'tbl-available', label: 'seating.legendAvailable' },
+  available: { card: 'tbl-available', label: TABLE_STATE_LABEL.available },
   // Free for the window being seated, but booked elsewhere in the day — still
   // pickable, just never shown as plain "Trống".
-  upcoming: { card: 'tbl-upcoming', label: 'seating.legendUpcoming' },
-  reserved: { card: 'tbl-reserved', label: 'seating.legendReserved' },
-  occupied: { card: 'tbl-occupied', label: 'seating.legendOccupied' },
-  overdue: { card: 'tbl-overdue', label: 'seating.legendOverdue' },
+  upcoming: { card: 'tbl-upcoming', label: TABLE_STATE_LABEL.upcoming },
+  reserved: { card: 'tbl-reserved', label: TABLE_STATE_LABEL.reserved },
+  occupied: { card: 'tbl-occupied', label: TABLE_STATE_LABEL.occupied },
+  overdue: { card: 'tbl-overdue', label: TABLE_STATE_LABEL.overdue },
   // An open check on the POS — the table has guests on it that the reservation
   // data doesn't know about, so it can never be seated into.
-  posOpen: { card: 'tbl-posOpen', label: 'seating.legendPosOpen' },
-  unavailable: { card: 'tbl-unavailable', label: 'seating.legendUnavailable' },
+  posOpen: { card: 'tbl-posOpen', label: TABLE_STATE_LABEL.posOpen },
+  unavailable: { card: 'tbl-unavailable', label: TABLE_STATE_LABEL.unavailable },
 };
 
 export function TableGrid({
@@ -67,8 +93,11 @@ export function TableGrid({
   onMergeModeChange,
   readOnly = false,
   filterBarExtra,
+  viewSwitch,
+  tableCharges,
+  renderMap,
 }: TableGridProps) {
-  const { t } = useTranslation();
+  const { t, i18n } = useTranslation();
   const [capacityFilter, setCapacityFilter] = useState<string>(CAPACITY_ALL);
   const [statusFilter, setStatusFilter] = useState<StatusFilter>('all');
   const [filtersOpen, setFiltersOpen] = useState(false);
@@ -78,20 +107,22 @@ export function TableGrid({
     [tables],
   );
 
-  const resolveState = (table: TableSetup): TableState => {
-    // Wins over whatever the bookings say about the table: the store has taken it
-    // out of service, so it is never seatable, however free the window looks.
-    if (!isTableReservable(table)) return 'unavailable';
-    return tableInfo.get(table.tablenum)?.state ?? 'available';
+  const resolveState = (table: TableSetup): TableState => tableStateOf(table, tableInfo);
+
+  const describe = (table: TableSetup) =>
+    describeTable(table, { tableInfo, selectedTablenums, ownTablenums, partySize, mergeMode, readOnly });
+
+  const chargeLabel = (table: TableSetup) => shortChargeLabel(tableCharges?.get(table.tablenum), t, i18n.language);
+
+  const matchesFilter = (tb: TableSetup) => {
+    if (capacityFilter !== CAPACITY_ALL && (tb.maxnumcust ?? 0) !== Number(capacityFilter)) return false;
+    if (statusFilter === 'all') return true;
+    if (statusFilter === 'merged') return tableInfo.get(tb.tablenum)?.merged === true;
+    return resolveState(tb) === statusFilter;
   };
 
   const filteredTables = useMemo(() => {
-    return tables.filter((tb) => {
-      if (capacityFilter !== CAPACITY_ALL && (tb.maxnumcust ?? 0) !== Number(capacityFilter)) return false;
-      if (statusFilter === 'all') return true;
-      if (statusFilter === 'merged') return tableInfo.get(tb.tablenum)?.merged === true;
-      return resolveState(tb) === statusFilter;
-    });
+    return tables.filter(matchesFilter);
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [tables, capacityFilter, statusFilter, tableInfo]);
 
@@ -154,8 +185,9 @@ export function TableGrid({
   }
 
   return (
-    <div>
+    <div className={renderMap ? 'flex h-full min-h-0 flex-col' : undefined}>
       <div className="mb-2 flex flex-wrap items-center gap-1.5">
+        {viewSwitch}
         <button
           onClick={() => setFiltersOpen((v) => !v)}
           className={`chip-btn flex items-center gap-1.5 rounded-full px-3 text-xs font-medium ${
@@ -241,7 +273,9 @@ export function TableGrid({
         </div>
       )}
 
-      {filteredTables.length === 0 ? (
+      {renderMap ? (
+        renderMap({ describe, matchesFilter, readOnly, partySize, mergeMode, chargeLabel })
+      ) : filteredTables.length === 0 ? (
         <p className="py-6 text-center text-sm text-muted">{t('seating.noTablesMatchFilter')}</p>
       ) : (
         <div className="space-y-3">
@@ -252,20 +286,9 @@ export function TableGrid({
               </h3>
               <div className="grid grid-cols-2 gap-2 sm:grid-cols-3 md:grid-cols-4 xl:grid-cols-5 2xl:grid-cols-6">
                 {section.tables.map((table) => {
-                  const info = tableInfo.get(table.tablenum);
-                  const state = resolveState(table);
-                  const selected = selectedTablenums.has(table.tablenum);
-                  // Only surface the "own table" badge when no OTHER booking
-                  // blocks the table — an `upcoming` hold elsewhere in the day
-                  // doesn't stop this guest sitting here now.
-                  const isOwn = ownTablenums?.has(table.tablenum) && !isTableBlocked(info) && state !== 'unavailable';
-                  // In merge mode a table that can't hold the party alone is
-                  // still a valid piece of a combined set.
-                  const tooSmall = !mergeMode && (table.maxnumcust ?? 0) < partySize;
-                  const isUnavailableState = isTableBlocked(info) || state === 'unavailable';
-                  const disabledByFilter = !selected && (isUnavailableState || tooSmall);
-                  const disabled = readOnly || disabledByFilter;
+                  const { info, state, selected, isOwn, isUnavailableState, disabledByFilter, disabled } = describe(table);
                   const style = STATE_STYLES[state];
+                  const charge = chargeLabel(table);
 
                   return (
                     <div key={table.globalId} id={`seat-table-${table.tablenum}`} className="relative">
@@ -299,12 +322,18 @@ export function TableGrid({
                             ? t('seating.ownTable')
                             : state === 'upcoming' && info?.nextTime
                               ? t('seating.upcomingAt', { time: info.nextTime.slice(0, 5) })
-                              : // Busy now, free for the window being held. The suffix is
-                                // optional — an empty translation shows the state alone.
-                                info?.advisory && t('seating.freeForThisSlot')
-                                ? `${t(style.label)} ${t('seating.freeForThisSlot')}`
-                                : t(style.label)}
+                              : // Held by a booking the restaurant has not confirmed yet (YC2).
+                                state === 'reserved' && info?.pending
+                                ? t('seating.reservedPending')
+                                : // Busy now, free for the window being held. The suffix is
+                                  // optional — an empty translation shows the state alone.
+                                  info?.advisory && t('seating.freeForThisSlot')
+                                  ? `${t(style.label)} ${t('seating.freeForThisSlot')}`
+                                  : t(style.label)}
                         </span>
+                        {/* Today's price of the table (YC1) — what the hostess quotes before
+                            seating. The booking keeps the price it was seated at. */}
+                        {charge && <span className="text-[11px] leading-tight opacity-80">{charge}</span>}
                       </button>
                       {info != null && info.globalIds.length > 0 && (
                         <button

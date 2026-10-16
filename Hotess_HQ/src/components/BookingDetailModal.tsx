@@ -4,12 +4,33 @@ import { useStore } from '../store/StoreContext';
 import { useAuth } from '../store/AuthContext';
 import { useReservationPreOrders } from '../hooks/usePreOrders';
 import { bookingScope } from '../api/orderHub';
+import { updateBooking } from '../api/bookings';
 import { BOOKING_STATUS_CONFIG, BookingStatus, ExtraFieldType, type PreOrder, type ReservationBooking } from '../types';
-import { getEffectiveStatus, seatedAtMs } from '../utils/bookingStatus';
+import { activeSeatTablenums, getEffectiveStatus, seatedAtMs } from '../utils/bookingStatus';
+import {
+  SURCHARGE_WAIVE_REASON_REQUIRED,
+  SURCHARGE_WAIVE_REASON_TOO_LONG,
+  apiErrorCode,
+  apiErrorMessage,
+  bookingFieldRefusalMessage,
+  isWaiverRefusalToRevert,
+} from '../utils/apiError';
+import {
+  amountOf,
+  canChangeWaiverAt,
+  freeSeatCount,
+  isSurchargeWaived,
+  waiveReasonProblem,
+  waiverPatch,
+  waiverSummary,
+} from '../utils/charges';
 import { formatVnHHmm } from '../utils/date';
 import { formatDuration } from '../utils/duration';
+import { formatVnd } from '../utils/money';
 import { PreOrderPanel } from './PreOrderPanel';
 import { PreOrderEditModal } from './PreOrderEditModal';
+import { SurchargeWaiveField } from './SurchargeWaiveField';
+import { useToast } from './ToastProvider';
 
 /** The sitting timer moves on its own — a panel left open must not freeze at "45 phút". */
 const TICK_MS = 30_000;
@@ -32,6 +53,12 @@ interface BookingDetailModalProps {
   /** Guest arrived and no longer wants the food — possible right up until it is released. */
   onCancelPreOrders?: () => void;
   cancellingPreOrders?: boolean;
+  /**
+   * Called after this card changed the booking itself (the surcharge waiver, YC3) with the
+   * fields that changed — so the caller can re-read its list, and stop treating the copy it
+   * holds as current.
+   */
+  onBookingUpdated?: (patch: Partial<ReservationBooking> & { globalId: number }) => void;
   onClose: () => void;
 }
 
@@ -57,13 +84,23 @@ export function BookingDetailModal({
   releasing,
   onCancelPreOrders,
   cancellingPreOrders,
+  onBookingUpdated,
   onClose,
 }: BookingDetailModalProps) {
   const { t } = useTranslation();
+  const toast = useToast();
   const { linkInfo, storeName } = useStore();
-  const { user, canEditPreOrders } = useAuth();
+  const { user, canEditPreOrders, canWaiveSurcharge } = useAuth();
   /** The order whose lines are being edited — one at a time, since `A-29` is per order. */
   const [editingOrder, setEditingOrder] = useState<PreOrder | null>(null);
+  /** What this card itself wrote to the booking — drawn over the copy it was handed, which is now stale. */
+  const [override, setOverride] = useState<Partial<ReservationBooking>>({});
+  /** The waiver the hostess is asking for; null = untouched, i.e. whatever the booking stores. */
+  const [waiveChoice, setWaiveChoice] = useState<boolean | null>(null);
+  const [waiveReason, setWaiveReason] = useState('');
+  /** Reason problems are only pointed out once she has tried to save. */
+  const [waiveTried, setWaiveTried] = useState(false);
+  const [savingWaiver, setSavingWaiver] = useState(false);
 
   /** The booking's own station, not the link's — which pre-orders are its is the booking's call. */
   const preOrderScope = linkInfo ? bookingScope(booking, linkInfo) : null;
@@ -94,9 +131,72 @@ export function BookingDetailModal({
   const bookingKey = booking?.globalId ?? null;
   useEffect(() => {
     setEditingOrder(null);
+    // Same for a waiver half-typed or just saved on the previous guest's card.
+    setOverride({});
+    setWaiveChoice(null);
+    setWaiveReason('');
+    setWaiveTried(false);
   }, [bookingKey]);
 
   if (!booking) return null;
+
+  /** The booking as this card last knows it. */
+  const view: ReservationBooking = { ...booking, ...override };
+  const storedWaived = isSurchargeWaived(view);
+  const wantWaived = waiveChoice ?? storedWaived;
+  // Stored status, not the effective one: an Overdue booking is still Confirm/Reserved to the server.
+  const waiverEditable = canWaiveSurcharge && canChangeWaiverAt(view.status);
+
+  /** PUT just the waiver — the booking's own station, as every write of it must (SPEC-06 R-06). */
+  const saveWaiver = async () => {
+    if (!linkInfo) return;
+    const problem = waiveReasonProblem(storedWaived, wantWaived, waiveReason);
+    if (problem) {
+      setWaiveTried(true);
+      return;
+    }
+    const patch = waiverPatch(storedWaived, wantWaived, waiveReason);
+    if (patch.isSurchargeWaived == null) return;
+    setSavingWaiver(true);
+    try {
+      const saved = await updateBooking({
+        globalId: view.globalId,
+        ...bookingScope(view, linkInfo),
+        userModified: user?.userId,
+        ...patch,
+      });
+      const waived = patch.isSurchargeWaived === 1;
+      // The PUT echoes the row without the joined name; the waiver is this login's own.
+      const changed: Partial<ReservationBooking> & { globalId: number } = {
+        globalId: view.globalId,
+        isSurchargeWaived: patch.isSurchargeWaived,
+        surchargeWaiveReason: waived ? (saved?.surchargeWaiveReason ?? patch.surchargeWaiveReason ?? null) : null,
+        surchargeWaivedBy: waived ? (saved?.surchargeWaivedBy ?? user?.userId ?? null) : null,
+        surchargeWaivedAt: waived ? (saved?.surchargeWaivedAt ?? null) : null,
+        surchargeWaivedByName: waived ? (user?.fullName || user?.userName || null) : null,
+        surchargeBase: saved?.surchargeBase ?? view.surchargeBase,
+        surchargeAmount: saved?.surchargeAmount ?? (waived ? 0 : (view.surchargeBase ?? view.surchargeAmount)),
+      };
+      setOverride((prev) => ({ ...prev, ...changed }));
+      setWaiveChoice(null);
+      setWaiveReason('');
+      setWaiveTried(false);
+      toast.success(t(waived ? 'surcharge.waiveSaved' : 'surcharge.unwaiveSaved'));
+      onBookingUpdated?.(changed);
+    } catch (err) {
+      toast.error(bookingFieldRefusalMessage(err, t) ?? apiErrorMessage(err, t('surcharge.saveError')));
+      const code = apiErrorCode(err);
+      if (isWaiverRefusalToRevert(err)) {
+        // Not this login's to change (or no longer changeable) — back to what the booking stores.
+        setWaiveChoice(null);
+        setWaiveReason('');
+      } else if (code === SURCHARGE_WAIVE_REASON_REQUIRED || code === SURCHARGE_WAIVE_REASON_TOO_LONG) {
+        setWaiveTried(true);
+      }
+    } finally {
+      setSavingWaiver(false);
+    }
+  };
 
   const effectiveStatus = getEffectiveStatus(booking);
   // How long the party has been on the table — the question staff actually ask of
@@ -106,9 +206,16 @@ export function BookingDetailModal({
   const sittingMinutes = seatedAt != null ? Math.max(0, Math.floor((now - seatedAt) / 60_000)) : null;
   const cfg = BOOKING_STATUS_CONFIG[effectiveStatus];
   const zoneName = linkInfo?.zones.find((z) => z.zoneID === booking.zoneID)?.zoneName;
-  const tableNumbers = (booking.seatTables ?? [])
-    .map((st) => st.reserTable ?? st.tableNum)
-    .filter((v): v is number => v != null);
+  // Retired rows (`isActive === 0`) are tables the party moved off, or picks the restaurant let go.
+  const tableNumbers = activeSeatTablenums(booking);
+  // On a still-New booking these are the guest's own picks, not tables anyone assigned (YC2).
+  const tablesAreGuestPicks = Number(booking.status) === BookingStatus.New;
+  const freeSeats = freeSeatCount(view);
+  // What the booking owes as the server snapshotted it when its tables were assigned (YC1).
+  const minimumCharge = amountOf(view.minimumChargeAmount);
+  const surchargeBase = amountOf(view.surchargeBase);
+  const surchargeOwed = storedWaived ? 0 : amountOf(view.surchargeAmount ?? view.surchargeBase);
+  const hasCharges = minimumCharge > 0 || surchargeBase > 0 || surchargeOwed > 0;
   // extraValues[].fieldName can come back blank from the search endpoint — the
   // config already loaded with the store's link info is the reliable label source.
   const configByFieldID = new Map((linkInfo?.extraFieldConfigs ?? []).map((c) => [String(c.fieldID), c]));
@@ -147,9 +254,13 @@ export function BookingDetailModal({
           <Row label={t('seating.date')} value={booking.reservationDate} />
           {booking.reservationTime && <Row label={t('seating.time')} value={booking.reservationTime.slice(0, 5)} />}
           <Row label={t('booking.partySize')} value={booking.partySize} />
+          {freeSeats > 0 && <Row label={t('freeSeats.label')} value={freeSeats} />}
           {zoneName && <Row label={t('booking.zone')} value={zoneName} />}
           {tableNumbers.length > 0 && (
-            <Row label={t('seating.assignedTables')} value={tableNumbers.join(', ')} />
+            <Row
+              label={t(tablesAreGuestPicks ? 'checkin.pickedTablesLabel' : 'seating.assignedTables')}
+              value={tableNumbers.join(', ')}
+            />
           )}
           {/* Only for a guest who is really on the table: the stored status, not the
               effective one, since Overdue is derived and never means "sat down". */}
@@ -193,7 +304,61 @@ export function BookingDetailModal({
               {booking.bookerEmail && <Row label={t('common.email')} value={booking.bookerEmail} />}
             </>
           )}
+
+          {/* The amounts the server snapshotted with the tables — not today's prices, which
+              the floor plan shows. Staff collect them on the POS. */}
+          {hasCharges && (
+            <>
+              <SectionLabel>{t('charges.sectionTitle')}</SectionLabel>
+              {minimumCharge > 0 && <Row label={t('charges.minimumLabel')} value={formatVnd(minimumCharge)} />}
+              {(surchargeBase > 0 || surchargeOwed > 0) && (
+                <Row
+                  label={t('charges.surchargeLabel')}
+                  value={
+                    storedWaived ? (
+                      <>
+                        <span className="mr-1.5 font-normal text-muted line-through">{formatVnd(surchargeBase)}</span>
+                        {formatVnd(0)}
+                      </>
+                    ) : (
+                      formatVnd(surchargeOwed)
+                    )
+                  }
+                />
+              )}
+            </>
+          )}
         </div>
+
+        {/* Who gave the surcharge away and why — the question a manager asks of a 0 on the bill. */}
+        {storedWaived && <p className="note note-ok mt-3">{waiverSummary(view, t)}</p>}
+
+        {waiverEditable && (
+          <div className="mt-3 space-y-2">
+            <SurchargeWaiveField
+              checked={wantWaived}
+              onCheckedChange={(on) => {
+                setWaiveChoice(on);
+                setWaiveTried(false);
+              }}
+              reason={waiveReason}
+              onReasonChange={setWaiveReason}
+              storedWaived={storedWaived}
+              reasonProblem={waiveTried ? waiveReasonProblem(storedWaived, wantWaived, waiveReason) : null}
+              surcharge={surchargeBase}
+              disabled={savingWaiver}
+            />
+            {wantWaived !== storedWaived && (
+              <button
+                onClick={() => void saveWaiver()}
+                disabled={savingWaiver}
+                className="chip-btn btn-primary w-full rounded-lg px-3 text-sm font-semibold"
+              >
+                {savingWaiver ? t('surcharge.saving') : t('surcharge.save')}
+              </button>
+            )}
+          </div>
+        )}
 
           <PreOrderPanel
             preOrders={bookingPreOrders}

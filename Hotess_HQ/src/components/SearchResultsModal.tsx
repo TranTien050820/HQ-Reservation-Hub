@@ -2,21 +2,10 @@ import { useState } from 'react';
 import { useTranslation } from 'react-i18next';
 import { useStore } from '../store/StoreContext';
 import { BOOKING_STATUS_CONFIG, BookingStatus, type PreOrder, type ReservationBooking } from '../types';
-import { getEffectiveStatus } from '../utils/bookingStatus';
+import { activeSeatTablenums, getEffectiveStatus, pickedTablenumsOfNew } from '../utils/bookingStatus';
+import { partyText } from '../utils/charges';
 import { PreOrderBadge } from './PreOrderPanel';
-import { ArmchairIcon } from './icons';
-
-/**
- * Tables the guest is actually on. `isActive === 0` marks a seat row the backend
- * retired (the party was moved), so those must not be reported as where to find
- * them; a missing flag is not the same thing and still counts.
- */
-function activeTablenums(booking: ReservationBooking): number[] {
-  return (booking.seatTables ?? [])
-    .filter((st) => st.isActive !== 0)
-    .map((st) => st.reserTable ?? st.tableNum)
-    .filter((v): v is number => v != null);
-}
+import { ArmchairIcon, LayoutIcon } from './icons';
 
 interface SearchResultsModalProps {
   open: boolean;
@@ -62,7 +51,10 @@ export function SearchResultsModal({ open, results, preOrdersFor, onSelect, onCl
             // Deliberately keyed off the stored status, not the effective one: only a
             // genuinely Seated booking has a table to report.
             const seated = Number(r.status) === BookingStatus.Seated;
-            const tablenums = seated ? activeTablenums(r) : [];
+            // Where to find them: a retired seat row (`isActive === 0`) is a table they moved off.
+            const tablenums = seated ? activeSeatTablenums(r) : [];
+            // Tables the guest picked ahead on a booking still waiting for the restaurant (YC2).
+            const picked = pickedTablenumsOfNew(r);
             return (
             <button
               key={r.globalId}
@@ -72,8 +64,14 @@ export function SearchResultsModal({ open, results, preOrdersFor, onSelect, onCl
               <span>
                 <span className="block font-semibold text-ink">{r.bookingName}</span>
                 <span className="block text-xs text-muted">
-                  {r.bookingPhone} · {r.reservationNo} · {r.partySize}p
+                  {r.bookingPhone} · {r.reservationNo} · {partyText(r, t)}
                 </span>
+                {picked.length > 0 && (
+                  <span className="mt-1 flex items-center gap-1.5 text-xs font-semibold text-info">
+                    <LayoutIcon size={13} className="shrink-0" />
+                    {t('checkin.pickedTables', { tables: picked.map((n) => `#${n}`).join(', ') })}
+                  </span>
+                )}
                 {/* Where to find a guest who is already sitting down. Seated with no
                     table means they were seated to the zone only — say that rather
                     than showing nothing, which reads as "no information". */}

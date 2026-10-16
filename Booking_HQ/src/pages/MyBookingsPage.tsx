@@ -59,11 +59,20 @@ export default function MyBookingsPage() {
 
   const handleCancel = async (booking: ReservationBooking) => {
     if (!booking.globalId) return;
+    // The booking's own station — the API requires it and refuses any other — with the link's
+    // as the fallback for a row that came back without it (the list only holds this station's).
+    const siteId = booking.siteId ?? data?.linkInfo?.siteId;
+    const sNum = booking.sNum ?? data?.linkInfo?.sNum;
+    const statNum = booking.statNum ?? data?.linkInfo?.statNum;
+    if (siteId == null || sNum == null || statNum == null) {
+      setCancelError(t('myBookings.errorCancel'));
+      return;
+    }
     if (!confirm(t('myBookings.confirmCancel', { ref: booking.reservationNo ?? '' }))) return;
     setCancellingId(booking.globalId);
     setCancelError(null);
     try {
-      await cancelBookingMutation.mutateAsync(booking.globalId);
+      await cancelBookingMutation.mutateAsync({ globalId: booking.globalId, siteId, sNum, statNum });
       void bookingsQuery.refetch();
     } catch (err) {
       setCancelError(err instanceof Error ? err.message : t('myBookings.errorCancel'));

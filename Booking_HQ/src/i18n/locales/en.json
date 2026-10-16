@@ -117,6 +117,8 @@
     "noBookableZone": "This seating area is fully booked for the date you selected — try another area or date.",
     "noBookableNoPeriod": "This restaurant isn't taking online reservations for the date you selected.",
     "noBookableNoTime": "No more bookable times remain for this date — try another date.",
+    "noBookablePartySize": "This seating area can't take a party of {{partySize}} on the date you selected — try a smaller party, another area or another date.",
+    "full": "Full",
     "about": "About {{name}}",
     "aboutText": "A {{cuisine}} spot known for seasonal menus and a warm dining room. Reserve online and we'll hold your table — no calls needed. Arrive within 15 minutes of your reservation time to keep your spot.",
     "goodToKnow": "Good to know",
@@ -175,7 +177,10 @@
     "partySize": "Party size",
     "seating": "Seating",
     "guests": "guests",
-    "extraFieldRequired": "This field is required"
+    "extraFieldRequired": "This field is required",
+    "soldOut": "This time is fully booked. Please go back and pick another time or seating area.",
+    "notEnoughSeats": "At this time we can only seat a party of up to {{bookable}} — not enough for {{partySize}} guests. Please go back and pick another time or seating area.",
+    "periodClosed": "The restaurant isn't taking reservations at this time. Please go back and pick another time."
   },
   "confirmation": {
     "title": "You're booked!",
@@ -224,7 +229,7 @@
     "status": {
       "1": "Pending confirmation",
       "2": "Confirmed",
-      "3": "Cancelled by restaurant",
+      "3": "Cancelled",
       "4": "Seated",
       "5": "Overdue",
       "6": "Arrived",

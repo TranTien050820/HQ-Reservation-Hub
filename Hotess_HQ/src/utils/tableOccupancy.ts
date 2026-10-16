@@ -47,6 +47,14 @@ export interface TableOccupancy {
    * collides with the judged window clears it.
    */
   advisory?: boolean;
+  /**
+   * `reserved` only because a still-New booking holds the table — tables the guest picked ahead
+   * that the restaurant has not confirmed yet (YC2). Still blocks: the server refuses a second
+   * booking onto them (409 SEAT_TABLE_OVERLAP, always enforced for these). Shown as "chờ xác
+   * nhận" so the hostess knows a confirmation, not a guest, is what is missing. The HQ floor
+   * plan status API flags the same tables with `pending: true`.
+   */
+  pending?: boolean;
 }
 
 /** States that actually stop the table being picked. `upcoming` is informational. */
@@ -141,6 +149,8 @@ export function buildTableOccupancy(
     if (effective === BookingStatus.Seated) bookedState = 'occupied';
     else if (effective === BookingStatus.Overdue) bookedState = 'overdue';
     else bookedState = 'reserved';
+    // Tables picked ahead on a booking nobody has confirmed yet (YC2).
+    const unconfirmed = Number(booking.status) === BookingStatus.New;
 
     // A party physically at the table holds it until the booking is closed.
     // Their configured 2h window expiring doesn't stand them up, so a Seated
@@ -185,6 +195,8 @@ export function buildTableOccupancy(
       const nextTime = blocked ? undefined : nextTimeByTable.get(tablenum);
       const mergedWithForThis = uniqueTablenums.filter((n) => n !== tablenum);
       const existing = info.get(tablenum);
+      // Pending only while EVERY hold behind the `reserved` colour is unconfirmed.
+      const pending = state === 'reserved' && unconfirmed;
       if (!existing) {
         info.set(tablenum, {
           state,
@@ -193,6 +205,7 @@ export function buildTableOccupancy(
           mergedWith: mergedWithForThis,
           nextTime,
           advisory,
+          pending,
         });
       } else {
         // Accumulate rather than overwrite so every booking on the table stays visible.
@@ -208,11 +221,16 @@ export function buildTableOccupancy(
           // blocked table shows as its reason.
           existing.state = state;
           existing.advisory = false;
+          existing.pending = pending;
         } else if (
           existingAdvisory === advisory &&
           STATE_PRIORITY[state] > STATE_PRIORITY[existing.state ?? 'upcoming']
         ) {
           existing.state = state;
+          existing.pending = pending;
+        } else if (state === 'reserved' && existing.state === 'reserved' && !unconfirmed) {
+          // A confirmed hold on the same table: it is no longer only waiting for a "yes".
+          existing.pending = false;
         }
         if (nextTime != null && (existing.nextTime == null || nextTime < existing.nextTime)) {
           existing.nextTime = nextTime;

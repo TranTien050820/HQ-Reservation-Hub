@@ -1,3 +1,4 @@
+import axios from 'axios';
 import { http } from './http';
 import {
   ReservationStatus,
@@ -10,6 +11,7 @@ import {
   type ReservationPeriod,
   type ReservationPeriodRule,
   type ReservationZone,
+  type SlotPoolAvailability,
   type StoreInfo,
 } from './types';
 import {
@@ -27,6 +29,8 @@ interface ApiEnvelope<T> {
   status: number;
   statusText: string;
   message: string;
+  /** Stable code of a refusal (e.g. PERIOD_NOT_CONFIGURED) — branch on this, never on `message`. */
+  errorCode?: string | null;
   data: T;
 }
 
@@ -116,6 +120,59 @@ export async function fetchBookingsByPhone(
     .sort((a, b) => (b.reservationDate ?? '').localeCompare(a.reservationDate ?? ''));
 }
 
+/**
+ * 400 from GET /api/ReservationSlotPools/availability (and POST /api/ReservationBookings) when the
+ * time falls inside no serving period: the restaurant takes no bookings at that hour at all.
+ */
+export const PERIOD_NOT_CONFIGURED = 'PERIOD_NOT_CONFIGURED';
+
+/** The code behind a refused call, when the API attached one — refusals come back as a real 4xx carrying the envelope. */
+export function apiErrorCode(error: unknown): string | null {
+  if (!axios.isAxiosError(error)) return null;
+  const code = (error.response?.data as { errorCode?: unknown } | undefined)?.errorCode;
+  return typeof code === 'string' && code ? code : null;
+}
+
+export interface SlotPoolAvailabilityQuery {
+  siteId: number;
+  sNum: number;
+  statNum: number;
+  date: string; // "yyyy-MM-dd"
+  zoneId?: number;
+  channelId?: number;
+  /** The link's channel partner: seats are checked against that partner's share of the channel. */
+  channelPartnerId?: number;
+  /** "HH:mm" — the server resolves the serving period from it the same way POST /api/ReservationBookings does. */
+  time?: string;
+}
+
+/**
+ * GET /api/ReservationSlotPools/availability — live seats on the real HQ-WebOffice-API, one row
+ * per slot pool that can serve the query.
+ *
+ * An empty array is an answer: no pool allocates anything to that seating area, so it can't be
+ * booked. Without `time`, each row still lists `availablePeriods` — the periods it has room in.
+ * A `time` outside every serving period is refused with 400 PERIOD_NOT_CONFIGURED.
+ */
+export async function fetchSlotPoolAvailability(query: SlotPoolAvailabilityQuery): Promise<SlotPoolAvailability[]> {
+  const { data } = await http.get<ApiEnvelope<SlotPoolAvailability[]>>('/api/ReservationSlotPools/availability', {
+    params: {
+      SiteId: query.siteId,
+      SNum: query.sNum,
+      StatNum: query.statNum,
+      date: query.date,
+      ZoneID: query.zoneId,
+      ChannelID: query.channelId,
+      ChannelPartnerID: query.channelPartnerId,
+      time: query.time,
+    },
+  });
+  if (data.status !== 200) {
+    throw new Error(data.message || 'Failed to load availability');
+  }
+  return data.data ?? [];
+}
+
 /** POST /api/ReservationBookings — creates a reservation on the real HQ-WebOffice-API. */
 export async function createBooking(
   payload: ReservationBookingCreatePayload,
@@ -127,13 +184,26 @@ export async function createBooking(
   return data.data;
 }
 
+/** The reservation a guest calls off, and the station it belongs to — the PUT requires all of it. */
+export interface CancelBookingInput {
+  globalId: number;
+  siteId: number;
+  sNum: number;
+  statNum: number;
+}
+
 /**
- * PUT /api/ReservationBookings — cancels a reservation on the real HQ-WebOffice-API.
- * Only ever called for a still-pending (status 1) booking; there's no dedicated
- * "cancelled by guest" code, so it reports back as status 7 (No-show).
+ * PUT /api/ReservationBookings — the guest cancels their own reservation on the real HQ-WebOffice-API.
+ * Only ever called for a still-pending (status 1) booking (`canCancelBooking`).
+ *
+ * Sent as Cancel (3). It used to go out as No-show (7) for want of a "cancelled by guest" code,
+ * which booked every guest who cancelled ahead as one who never turned up — and, sent without
+ * SiteId / SNum / StatNum, was refused by the API with a 400 anyway. The seats come back the
+ * same either way (the API releases Cancel and No-show alike); what changes is the record.
+ * The station sent is the booking's own: the API refuses to move a booking to another one.
  */
-export async function cancelBooking(globalId: number): Promise<ReservationBooking> {
-  const payload: ReservationBookingUpdatePayload = { globalId, status: ReservationStatus.NoShow };
+export async function cancelBooking({ globalId, siteId, sNum, statNum }: CancelBookingInput): Promise<ReservationBooking> {
+  const payload: ReservationBookingUpdatePayload = { globalId, siteId, sNum, statNum, status: ReservationStatus.Cancel };
   const { data } = await http.put<ApiEnvelope<ReservationBooking>>('/api/ReservationBookings', payload);
   if (data.status !== 200) {
     throw new Error(data.message || 'Failed to cancel reservation');

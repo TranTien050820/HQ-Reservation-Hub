@@ -5,16 +5,27 @@ import { useNavigate } from 'react-router-dom';
 import { useStore } from '../store/StoreContext';
 import { useAuth } from '../store/AuthContext';
 import { useToast } from '../components/ToastProvider';
-import { fetchAvailableSlots } from '../api/availableSlots';
+import { fetchSlotPoolAvailability, maxBookable, PERIOD_NOT_CONFIGURED } from '../api/slotPoolAvailability';
 import { createBooking } from '../api/bookings';
-import { apiErrorMessage } from '../utils/apiError';
+import {
+  FREE_SEATS_INVALID,
+  SURCHARGE_WAIVE_REASON_REQUIRED,
+  SURCHARGE_WAIVE_REASON_TOO_LONG,
+  apiErrorCode,
+  apiErrorMessage,
+  bookingFieldRefusalMessage,
+  isWaiverRefusalToRevert,
+} from '../utils/apiError';
+import { waiveReasonProblem, waiverPatch } from '../utils/charges';
 import { formatVnDate, formatVnHHmm, nowTimeStr, todayStr } from '../utils/date';
 import { ArrowLeftIcon } from '../components/icons';
+import { SurchargeWaiveField } from '../components/SurchargeWaiveField';
 import {
   BookingStatus,
   ExtraFieldType,
   type CreateReservationBookingRequest,
   type ReservationBooking,
+  type SlotPoolAvailability,
 } from '../types';
 
 interface FormValues {
@@ -22,6 +33,8 @@ interface FormValues {
   bookingName: string;
   zoneID: string;
   partySize: number;
+  /** YC5 — how many of the party are not charged (children, invited guests): 0..partySize. */
+  freeSeats: number;
   notes: string;
 }
 
@@ -37,21 +50,39 @@ const PHONE_MAX_LENGTH = 20;
  */
 const digitsOnly = (value: string) => value.replace(/\D/g, '').slice(0, PHONE_MAX_LENGTH);
 
+/**
+ * Why a walk-in was turned away before anything was written.
+ * - `capacity`: the zone cannot seat this party right now; `bookable` is the largest party it
+ *   still can (0 = full).
+ * - `closed`: no serving period covers this minute, so the store sells nothing at this hour.
+ */
+type WalkInRefusal =
+  | { kind: 'capacity'; bookable: number; zoneName: string | null }
+  | { kind: 'closed' };
+
 export function BookingFormScreen() {
   const { t, i18n } = useTranslation();
   const navigate = useNavigate();
   const toast = useToast();
   const { linkInfo } = useStore();
-  const { user } = useAuth();
+  const { user, canWaiveSurcharge } = useAuth();
   const zones = linkInfo?.zones ?? [];
-  const [zoneFull, setZoneFull] = useState(false);
+  const [refusal, setRefusal] = useState<WalkInRefusal | null>(null);
   const [submitting, setSubmitting] = useState(false);
+  /**
+   * "Miễn phụ thu (VIP)" (YC3). A walk-in has no table yet, so there is no amount to show — the
+   * flag travels with the booking, and whatever table it is seated at later comes to 0 surcharge.
+   */
+  const [waiveOn, setWaiveOn] = useState(false);
+  const [waiveReason, setWaiveReason] = useState('');
+  const [waiveTried, setWaiveTried] = useState(false);
   const {
     register,
     handleSubmit,
     watch,
+    setError,
     formState: { errors },
-  } = useForm<FormValues>({ defaultValues: { partySize: 2 } });
+  } = useForm<FormValues>({ defaultValues: { partySize: 2, freeSeats: 0 } });
 
   // Registered once so the input can wrap `onChange` without re-registering on
   // every render. `setValueAs` isn't enough on its own — it runs on read, so
@@ -103,15 +134,55 @@ export function BookingFormScreen() {
     setExtraErrors(missing);
     if (Object.keys(missing).length > 0) return;
 
+    // Only an account allowed to give it away sends a waiver at all — the server refuses
+    // anyone else's with 403 — and only with the reason it requires.
+    const wantWaived = canWaiveSurcharge && waiveOn;
+    if (waiveReasonProblem(false, wantWaived, waiveReason)) {
+      setWaiveTried(true);
+      return;
+    }
+
     setSubmitting(true);
-    setZoneFull(false);
+    setRefusal(null);
+    // One instant for the whole walk-in, so the capacity check below and the booking itself ask
+    // about the same minute — and therefore the same serving period.
+    const at = Date.now();
+    const partySize = Number(values.partySize);
+    // An emptied box means none; the field's own rule already kept it within 0..partySize.
+    const freeSeats = Number.isFinite(values.freeSeats) ? Math.max(0, Math.floor(values.freeSeats)) : 0;
     try {
-      if (values.zoneID) {
-        const slots = await fetchAvailableSlots(linkInfo, todayStr());
-        const slot = slots.find((s) => s.zoneID === Number(values.zoneID));
-        if (slot && (slot.numberOfUnused ?? 0) <= 0) {
-          setZoneFull(true);
-          setSubmitting(false);
+      // The zone the booking will really draw from: the one picked or, left blank, the station's
+      // default zone — where the server puts a booking sent without ZoneID. No zone at all means
+      // the booking takes no capacity, so there is nothing to check.
+      const zoneId = values.zoneID ? Number(values.zoneID) : zones.find((z) => z.isPrimary === 1)?.zoneID;
+      if (zoneId != null) {
+        // Ask exactly what the POST below will be held to: this zone, this channel, this minute.
+        // `bookable` is right for every allocation tree; the AvailableSlots grid's
+        // `numberOfUnused` ignored the channel/period limits and the party size.
+        let rows: SlotPoolAvailability[] | null = null;
+        try {
+          rows = await fetchSlotPoolAvailability(linkInfo, {
+            date: todayStr(at),
+            zoneId,
+            channelId: linkInfo.channelId,
+            time: formatVnHHmm(at),
+          });
+        } catch (err) {
+          if (apiErrorCode(err) === PERIOD_NOT_CONFIGURED) {
+            setRefusal({ kind: 'closed' });
+            return;
+          }
+          // Any other failure says nothing about the seats. The POST enforces the same limits
+          // server-side, so let it decide rather than turn a guest away over a lost request.
+        }
+        // MAX, never the sum: one booking takes all its seats from a single pool.
+        const bookable = rows ? maxBookable(rows) : null;
+        if (bookable != null && bookable < partySize) {
+          setRefusal({
+            kind: 'capacity',
+            bookable,
+            zoneName: zones.find((z) => z.zoneID === zoneId)?.zoneName ?? null,
+          });
           return;
         }
       }
@@ -122,11 +193,13 @@ export function BookingFormScreen() {
         channelID: linkInfo.channelId,
         bookingName: values.bookingName,
         bookingPhone: values.bookingPhone,
-        reservationDate: todayStr(),
+        reservationDate: todayStr(at),
         // Walk-in: the guest is standing here, so the booking is stamped with
         // the moment of submission — the backend resolves PeriodID from it.
-        reservationTime: nowTimeStr(),
-        partySize: Number(values.partySize),
+        reservationTime: nowTimeStr(at),
+        partySize,
+        // Still seated, still counted against capacity — just not charged (YC5).
+        freeSeats: freeSeats > 0 ? freeSeats : undefined,
         zoneID: values.zoneID ? Number(values.zoneID) : undefined,
         status: BookingStatus.Confirm,
         customerNote: values.notes,
@@ -137,6 +210,7 @@ export function BookingFormScreen() {
               fieldValue: extraValues[String(field.fieldID)] ?? '',
             }))
           : undefined,
+        ...waiverPatch(false, wantWaived, waiveReason),
       } satisfies CreateReservationBookingRequest;
       const created = await createBooking(payload);
       toast.success(t('booking.success'));
@@ -154,10 +228,34 @@ export function BookingFormScreen() {
         reservationTime: created.reservationTime ?? payload.reservationTime,
         zoneID: created.zoneID ?? payload.zoneID ?? null,
         status: created.status || payload.status,
+        // What the seating screen compares its own switches against. `??`, not `||`: an echoed
+        // 0 is an answer (e.g. a server without the column ignored the waiver), not a gap.
+        freeSeats: created.freeSeats ?? payload.freeSeats ?? 0,
+        isSurchargeWaived: created.isSurchargeWaived ?? payload.isSurchargeWaived ?? 0,
+        surchargeWaiveReason: created.surchargeWaiveReason ?? payload.surchargeWaiveReason ?? null,
       };
       navigate('../seating', { state: { booking } });
     } catch (err) {
-      toast.error(apiErrorMessage(err, t('booking.error')));
+      const code = apiErrorCode(err);
+      // The waiver or the free seats were refused (YC3 / YC5) — nothing was created, so put the
+      // field right and the same tap creates the booking.
+      const fieldRefusal = bookingFieldRefusalMessage(err, t);
+      // A booking with no zone skips the check above, so the POST is what finds an unsold hour —
+      // say it the same way rather than in the server's English.
+      if (code === PERIOD_NOT_CONFIGURED) setRefusal({ kind: 'closed' });
+      else if (fieldRefusal) {
+        toast.error(fieldRefusal);
+        if (isWaiverRefusalToRevert(err)) {
+          // Not this login's to give: drop the waiver rather than refuse the guest over it.
+          setWaiveOn(false);
+          setWaiveReason('');
+          setWaiveTried(false);
+        } else if (code === SURCHARGE_WAIVE_REASON_REQUIRED || code === SURCHARGE_WAIVE_REASON_TOO_LONG) {
+          setWaiveTried(true);
+        } else if (code === FREE_SEATS_INVALID) {
+          setError('freeSeats', { message: fieldRefusal });
+        }
+      } else toast.error(apiErrorMessage(err, t('booking.error')));
     } finally {
       setSubmitting(false);
     }
@@ -215,7 +313,7 @@ export function BookingFormScreen() {
             />
             {errors.bookingName && <p className="mt-1 text-xs text-bad">{t('booking.required')}</p>}
           </div>
-          <div className="grid grid-cols-2 gap-3">
+          <div className="grid grid-cols-2 gap-3 sm:grid-cols-3">
             <div>
               <label className="field-label">{t('booking.zone')}</label>
               <select
@@ -238,6 +336,32 @@ export function BookingFormScreen() {
                 className="field touch-btn px-4"
                 {...register('partySize', { required: true, min: 1, valueAsNumber: true })}
               />
+            </div>
+            {/* Part of the party, not on top of it: they still take a seat (YC5). */}
+            <div>
+              <label
+                className="field-label"
+                title={t('freeSeats.hint', { party: Number.isFinite(values.partySize) ? values.partySize : '—' })}
+              >
+                {t('freeSeats.label')}
+              </label>
+              <input
+                type="number"
+                min={0}
+                max={Number.isFinite(values.partySize) ? values.partySize : undefined}
+                inputMode="numeric"
+                className="field touch-btn px-4"
+                {...register('freeSeats', {
+                  valueAsNumber: true,
+                  validate: (value, all) => {
+                    const free = Number.isFinite(value) ? value : 0;
+                    return (free >= 0 && free <= Number(all.partySize)) || t('freeSeats.invalid');
+                  },
+                })}
+              />
+              {errors.freeSeats && (
+                <p className="mt-1 text-xs text-bad">{errors.freeSeats.message || t('freeSeats.invalid')}</p>
+              )}
             </div>
           </div>
           <div>
@@ -294,9 +418,36 @@ export function BookingFormScreen() {
             );
           })}
 
-          {zoneFull && (
+          {canWaiveSurcharge && (
+            <SurchargeWaiveField
+              checked={waiveOn}
+              onCheckedChange={(on) => {
+                setWaiveOn(on);
+                setWaiveTried(false);
+              }}
+              reason={waiveReason}
+              onReasonChange={setWaiveReason}
+              reasonProblem={waiveTried ? waiveReasonProblem(false, waiveOn, waiveReason) : null}
+              disabled={submitting}
+            />
+          )}
+
+          {refusal && (
             <div className="note note-warn">
-              <p className="text-sm font-semibold">{t('booking.zoneFull')}</p>
+              <p className="text-sm font-semibold">
+                {refusal.kind === 'closed'
+                  ? t('booking.periodClosed', { defaultValue: 'Giờ này cửa hàng không nhận đặt' })
+                  : refusal.bookable > 0
+                    ? t('booking.zoneTooSmall', {
+                        bookable: refusal.bookable,
+                        defaultValue: 'Khu vực này chỉ còn nhận đoàn tối đa {{bookable}} khách',
+                      })
+                    : t('booking.zoneFull')}
+                {/* Named, because a blank zone field was checked against the default zone. */}
+                {refusal.kind === 'capacity' && refusal.zoneName && (
+                  <span className="font-normal opacity-85"> · {refusal.zoneName}</span>
+                )}
+              </p>
               <p className="mt-0.5 opacity-85">{t('booking.zoneFullHint')}</p>
               <button
                 type="button"

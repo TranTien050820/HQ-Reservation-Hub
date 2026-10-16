@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import { Suspense, lazy, useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { useTranslation } from 'react-i18next';
 import { useLocation, useNavigate } from 'react-router-dom';
 import { useStore } from '../store/StoreContext';
@@ -7,9 +7,11 @@ import { useToast } from '../components/ToastProvider';
 import { Spinner } from '../components/Spinner';
 import { TableGrid } from '../components/TableGrid';
 import { TableLegend } from '../components/TableLegend';
+import { SeatingViewSwitch } from '../components/SeatingViewSwitch';
 import { BookingDetailModal } from '../components/BookingDetailModal';
 import { ConfirmDialog } from '../components/ConfirmDialog';
 import { PreOrderBadge } from '../components/PreOrderPanel';
+import { SurchargeWaiveField } from '../components/SurchargeWaiveField';
 import { AlertIcon, ArmchairIcon, ArrowLeftIcon, LayoutIcon, RefreshIcon, StarIcon } from '../components/icons';
 import { fetchAvailableSlots } from '../api/availableSlots';
 import { searchBookings, updateBooking } from '../api/bookings';
@@ -22,9 +24,34 @@ import {
 import { fetchAllPages } from '../api/paginate';
 import { usePosOpenTables } from '../hooks/usePosOpenTables';
 import { usePreOrders } from '../hooks/usePreOrders';
+import { usePublishedFloorPlans, useSeatingView } from '../hooks/useFloorPlans';
+import { useLiveFloorRefresh } from '../hooks/useLiveFloorStatus';
 import { formatVnHHmm, todayStr } from '../utils/date';
-import { apiErrorMessage, tableRefusalMessage, tableRefusalOf } from '../utils/apiError';
+import {
+  FREE_SEATS_INVALID,
+  SURCHARGE_WAIVE_REASON_REQUIRED,
+  SURCHARGE_WAIVE_REASON_TOO_LONG,
+  apiErrorCode,
+  apiErrorMessage,
+  bookingFieldRefusalMessage,
+  isPosUnreachable,
+  isWaiverRefusalToRevert,
+  tableRefusalMessage,
+  tableRefusalOf,
+} from '../utils/apiError';
+import { seatOverlapMessage, seatOverlapOf } from '../utils/seatOverlap';
 import { getEffectiveStatus } from '../utils/bookingStatus';
+import {
+  chargesOfTables,
+  freeSeatCount,
+  isSurchargeWaived,
+  partyText,
+  tableChargeMap,
+  waiveReasonProblem,
+  waiverPatch,
+  waiverSummary,
+} from '../utils/charges';
+import { formatVnd } from '../utils/money';
 import { computeSeatWindow, toMinutes } from '../utils/timeWindow';
 import { buildTableOccupancy, isTableBlocked, isTableReservable } from '../utils/tableOccupancy';
 import { isExcessCapacity, suggestTables } from '../utils/tableSuggestion';
@@ -37,6 +64,9 @@ import {
   type SiteScope,
   type TableSetup,
 } from '../types';
+
+/** Konva and the map arrive only when someone first opens a floor map, never with the grid. */
+const SeatingFloorMap = lazy(() => import('../components/SeatingFloorMap'));
 
 /**
  * One booking's pre-order action: which booking, and the booking's own station scope that
@@ -60,6 +90,11 @@ interface PreOrderTarget {
  * enough to run all service without being slow enough to seat a guest onto a taken table.
  */
 const FLOOR_PLAN_REFRESH_MS = 30_000;
+/**
+ * The same poll while HQ is pushing this zone's table changes (floor plan published, hub
+ * connected): pushes carry the news, the poll only backs up tables the plan leaves out.
+ */
+const FLOOR_PLAN_LIVE_REFRESH_MS = 60_000;
 
 /** The tables a booking holds right now. `isActive === 0` rows are retired moves, not its table. */
 function heldTablenums(booking: ReservationBooking): number[] {
@@ -82,10 +117,18 @@ export function SeatingScreen() {
   const navigate = useNavigate();
   const toast = useToast();
   const { linkInfo } = useStore();
-  const { user } = useAuth();
+  const { user, canWaiveSurcharge } = useAuth();
   const location = useLocation();
-  const activeBooking = (location.state as { booking?: ReservationBooking } | null)?.booking;
+  const navState = location.state as { booking?: ReservationBooking; pickTablesAgain?: boolean } | null;
+  const activeBooking = navState?.booking;
+  /**
+   * Set by check-in's "Xác nhận, đổi bàn" (YC2): the booking still holds the tables its guest
+   * picked, but the hostess is choosing others, so they are shown as the guest's — not picked.
+   */
+  const pickTablesAgain = navState?.pickTablesAgain === true;
   const zones = useMemo(() => linkInfo?.zones ?? [], [linkInfo]);
+  /** Today's per-table minimum spend / surcharge (YC1). */
+  const tableCharges = useMemo(() => tableChargeMap(linkInfo?.tableCharges), [linkInfo]);
   /**
    * Tables the server refused for this restaurant while the screen was open
    * (`TABLE_NOT_IN_RESTAURANT`). The refusal is final — the same table is refused every time
@@ -101,6 +144,8 @@ export function SeatingScreen() {
   }, [linkInfo, refusedTablenums]);
   const zoneSectionLinks = useMemo(() => linkInfo?.zoneSectionLinks ?? [], [linkInfo]);
   const sections = useMemo(() => linkInfo?.sections ?? [], [linkInfo]);
+  const floorPlans = usePublishedFloorPlans(linkInfo);
+  const [seatingView, setSeatingView] = useSeatingView();
 
   const [slots, setSlots] = useState<AvailableSlot[]>([]);
   const [selectedZoneID, setSelectedZoneID] = useState<number | null>(null);
@@ -201,16 +246,62 @@ export function SeatingScreen() {
     return Number.isFinite(n) && n > 0 ? Math.floor(n) : partySize;
   }, [actualQtyInput, partySize]);
 
+  // Guests in the party who are not charged (YC5), correctable at the door like the head count.
+  // Sent with the seating only when changed; the server holds it to 0..partySize (the BOOKED
+  // party — the seating PUT does not send partySize).
+  const storedFreeSeats = activeBooking ? freeSeatCount(activeBooking) : 0;
+  const [freeSeatsInput, setFreeSeatsInput] = useState(() => String(storedFreeSeats));
+  const freeSeats = useMemo(() => {
+    const n = Number(freeSeatsInput);
+    return freeSeatsInput.trim() !== '' && Number.isFinite(n) && n >= 0 ? Math.floor(n) : storedFreeSeats;
+  }, [freeSeatsInput, storedFreeSeats]);
+  const freeSeatsInvalid = !!activeBooking && freeSeats > (activeBooking.partySize ?? 0);
+
+  /**
+   * The surcharge waiver (YC3) as the booking stores it — moved along when it is changed from
+   * this guest's booking card, so the seating does not send a stale "change" on top of it.
+   */
+  const [storedWaived, setStoredWaived] = useState(() => isSurchargeWaived(activeBooking));
+  const [waiveOn, setWaiveOn] = useState(storedWaived);
+  const [waiveReason, setWaiveReason] = useState('');
+  /** Reason problems are only pointed out once she has tried to seat with them. */
+  const [waiveTried, setWaiveTried] = useState(false);
+  /** What this screen learned about the active booking after the router handed it over (a waiver from its card). */
+  const [activeOverrides, setActiveOverrides] = useState<Partial<ReservationBooking>>({});
+
   const tables = useMemo(() => {
     if (selectedZoneID == null) return [];
     const secNums = new Set(zoneSectionLinks.filter((l) => l.zoneID === selectedZoneID).map((l) => l.secNum));
     return allTables.filter((tb) => secNums.has(tb.secnum));
   }, [allTables, zoneSectionLinks, selectedZoneID]);
 
+  /** The open zone's published floor plan — one per zone, drawn from the tables of the zone's sections. */
+  const zonePlan = useMemo(
+    () => (selectedZoneID == null ? null : floorPlans.find((plan) => plan.zoneID === selectedZoneID) ?? null),
+    [floorPlans, selectedZoneID],
+  );
+  // A zone with no plan simply shows the cards — the remembered choice stays for the next zone.
+  const showMap = seatingView === 'map' && zonePlan != null;
+
   const selectedCapacity = useMemo(
     () => tables.filter((tb) => selectedTablenums.has(tb.tablenum)).reduce((sum, tb) => sum + (tb.maxnumcust ?? 0), 0),
     [tables, selectedTablenums],
   );
+
+  /** What the picked tables come to at today's prices — merged tables add up, as on the server (YC1). */
+  const selectedCharges = useMemo(
+    () => chargesOfTables(selectedTablenums, tableCharges),
+    [selectedTablenums, tableCharges],
+  );
+
+  /**
+   * The waiver switch belongs to a seating only while the picked tables carry a surcharge — or
+   * the booking already has one waived, to take back. A switch that is not on screen counts as
+   * untouched, so a pick that moved off the surcharged tables cannot send a waiver nobody sees.
+   */
+  const showWaiver =
+    canWaiveSurcharge && !!activeBooking && !alreadySeated && (selectedCharges.surcharge > 0 || storedWaived);
+  const waiveWanted = showWaiver ? waiveOn : storedWaived;
 
   /** Whole store, not just the open zone — the submit guard has to judge every picked table. */
   const tableByNum = useMemo(() => new Map(allTables.map((tb) => [tb.tablenum, tb])), [allTables]);
@@ -423,7 +514,9 @@ export function SeatingScreen() {
         // regardless of time window, since we're continuing this same booking.
         // Nothing is being picked for a guest who is already at a table — pre-selecting
         // would only dress the grid up as a seating flow that this screen refuses to run.
-        if (activeBooking?.zoneID === zoneID && !alreadySeated) {
+        // Nor when check-in said she is changing the guest's tables (`pickTablesAgain`): they
+        // stay marked as the guest's, but the pick starts empty.
+        if (activeBooking?.zoneID === zoneID && !alreadySeated && !pickTablesAgain) {
           // …except a table the store has since taken out of service: re-selecting
           // it would put a `canreserve = 0` table straight back into the Seat
           // payload, past a grid that already renders it as unavailable. Same for a
@@ -452,12 +545,19 @@ export function SeatingScreen() {
       if (isNewZone && !ok) toast.error(t('common.error'));
       if (isNewZone) setLoading(false);
     },
-    [linkInfo, toast, t, activeBooking, alreadySeated, refreshFloorPlan, tableByNum, zoneSectionLinks],
+    [linkInfo, toast, t, activeBooking, alreadySeated, pickTablesAgain, refreshFloorPlan, tableByNum, zoneSectionLinks],
   );
 
   useEffect(() => {
     if (selectedZoneID != null) loadOccupiedTables(selectedZoneID);
   }, [selectedZoneID, loadOccupiedTables]);
+
+  // HQ pushes table changes of zones that have a published plan — re-read at once.
+  const liveStatus = useLiveFloorRefresh({
+    scope: linkInfo,
+    zoneID: zonePlan ? selectedZoneID : null,
+    onRefresh: refreshFloorPlan,
+  });
 
   /**
    * Keep the plan honest while it sits open.
@@ -475,13 +575,13 @@ export function SeatingScreen() {
       if (document.visibilityState === 'visible') void refreshFloorPlan();
     };
 
-    const timer = setInterval(refreshIfVisible, FLOOR_PLAN_REFRESH_MS);
+    const timer = setInterval(refreshIfVisible, liveStatus ? FLOOR_PLAN_LIVE_REFRESH_MS : FLOOR_PLAN_REFRESH_MS);
     document.addEventListener('visibilitychange', refreshIfVisible);
     return () => {
       clearInterval(timer);
       document.removeEventListener('visibilitychange', refreshIfVisible);
     };
-  }, [selectedZoneID, refreshFloorPlan]);
+  }, [selectedZoneID, refreshFloorPlan, liveStatus]);
 
   // A check can open on a table this booking already holds — pre-selected on
   // load — and Seat would then refuse it. Drop it from the selection as soon as
@@ -646,15 +746,86 @@ export function SeatingScreen() {
   };
 
   /**
+   * The server's reason for a failed seating — except when the POS could not be reached at
+   * all. Seating opens the table on the POS before HQ commits, so that failure blocks every
+   * table alike, and the server's sentence for it is written for engineers. The floor gets
+   * what happened, who can fix it, and the station they will ask about.
+   */
+  const seatErrorMessage = (err: unknown) =>
+    isPosUnreachable(err) && linkInfo
+      ? t('seating.posUnreachable', { station: `${linkInfo.siteId}:${linkInfo.sNum}:${linkInfo.statNum}` })
+      : apiErrorMessage(err, t('seating.seatError'));
+
+  /**
+   * Free seats and the waiver ride on the seating PUT — each only when the hostess changed it.
+   * An untouched waiver is never sent: the server checks the permission on a change, and a PUT
+   * without the field leaves it as it is.
+   */
+  const seatExtras = () => ({
+    ...(activeBooking && freeSeats !== storedFreeSeats ? { freeSeats } : {}),
+    ...waiverPatch(storedWaived, waiveWanted, waiveReason),
+  });
+
+  /** The same refusals the server would give, caught before anything is sent. True = do not seat. */
+  const seatExtrasBlocked = (): boolean => {
+    if (freeSeatsInvalid) {
+      toast.error(t('freeSeats.invalid'));
+      return true;
+    }
+    const problem = waiveReasonProblem(storedWaived, waiveWanted, waiveReason);
+    if (problem) {
+      setWaiveTried(true);
+      toast.error(t(problem === 'required' ? 'surcharge.reasonRequired' : 'surcharge.reasonTooLong'));
+      return true;
+    }
+    return false;
+  };
+
+  /**
+   * A seating refused over the waiver or the free-seat count rather than the tables (YC3 / YC5).
+   * Nothing was written — the guest is not seated — so the field is put back to something the
+   * server takes and the same tap can simply be repeated. True when `err` was one of those.
+   */
+  const reportFieldRefusal = (err: unknown): boolean => {
+    const message = bookingFieldRefusalMessage(err, t);
+    if (!message) return false;
+    toast.error(message);
+    const code = apiErrorCode(err);
+    if (isWaiverRefusalToRevert(err)) {
+      // Not this login's to give (or no longer changeable): back to what the booking stores.
+      setWaiveOn(storedWaived);
+      setWaiveReason('');
+      setWaiveTried(false);
+    } else if (code === SURCHARGE_WAIVE_REASON_REQUIRED || code === SURCHARGE_WAIVE_REASON_TOO_LONG) {
+      setWaiveTried(true);
+    } else if (code === FREE_SEATS_INVALID) {
+      setFreeSeatsInput(String(storedFreeSeats));
+    }
+    return true;
+  };
+
+  /**
    * A seating the server refused. `TABLE_NOT_IN_RESTAURANT` is final (SPEC-06 §4.10): the
    * refused table is taken out of this screen for good — sending it again only earns the
    * same 403 — and the hostess is told why in words that point at the fix. Anything else
    * keeps the server's own sentence.
    */
   const reportSeatError = (err: unknown, pickedTablenums: number[]) => {
+    // Refused over the waiver / free seats, not the tables — the pick stays as it is.
+    if (reportFieldRefusal(err)) return;
+    // Another booking holds the table in this window (R16). Time-bound, not final: the
+    // tables leave this pick but stay pickable, and the floor is re-read to show the hold.
+    const overlap = seatOverlapOf(err);
+    if (overlap) {
+      toast.error(seatOverlapMessage(overlap, t, pickedTablenums));
+      const clash = new Set(overlap.tables.length > 0 ? overlap.tables : pickedTablenums);
+      setSelectedTablenums((prev) => new Set([...prev].filter((n) => !clash.has(n))));
+      void refreshFloorPlan();
+      return;
+    }
     const refusal = tableRefusalOf(err);
     if (!refusal) {
-      toast.error(apiErrorMessage(err, t('seating.seatError')));
+      toast.error(seatErrorMessage(err));
       return;
     }
     toast.error(tableRefusalMessage(refusal, t, pickedTablenums));
@@ -681,6 +852,7 @@ export function SeatingScreen() {
 
   const seatToZone = async () => {
     if (!activeBooking || selectedZoneID == null || !linkInfo || alreadySeated) return;
+    if (seatExtrasBlocked()) return;
     try {
       await updateBooking({
         globalId: activeBooking.globalId,
@@ -691,6 +863,7 @@ export function SeatingScreen() {
         zoneID: selectedZoneID,
         actualQty,
         userSeat: user?.userId,
+        ...seatExtras(),
       });
       setJustSeatedTables([]);
       toast.success(t('seating.seatSuccess'));
@@ -705,7 +878,7 @@ export function SeatingScreen() {
     } catch (err) {
       // The backend refuses for reasons the hostess can act on — zone full, booking
       // already closed elsewhere — so show what it said, not "Đã xảy ra lỗi".
-      toast.error(apiErrorMessage(err, t('seating.seatError')));
+      if (!reportFieldRefusal(err)) toast.error(seatErrorMessage(err));
     }
   };
 
@@ -714,6 +887,7 @@ export function SeatingScreen() {
     // The guest is already at a table; re-running this would lay a second set of seat
     // rows over the first. The buttons are gone in this state — this is the backstop.
     if (alreadySeated) return;
+    if (seatExtrasBlocked()) return;
     // Only this zone's tables are on the grid, so only they may be in the payload. Every way
     // of picking (the grid, the suggestions, the pre-selection) already keeps to the zone;
     // this is the backstop for a pick that slipped past them (SPEC-06 R-11).
@@ -770,6 +944,7 @@ export function SeatingScreen() {
         actualQty,
         userSeat: user?.userId,
         seatTables,
+        ...seatExtras(),
       });
       // Before the Release branch below, which can keep the hostess on this screen.
       setJustSeatedTables(seatTables.map((st) => st.tableNum));
@@ -880,11 +1055,11 @@ export function SeatingScreen() {
               <p className="flex flex-wrap items-center gap-2 text-sm text-ink">
                 <span className="font-semibold">{activeBooking.bookingName}</span>
                 <span className="text-muted">
-                  {activeBooking.bookingPhone} · {partySize}p
+                  {activeBooking.bookingPhone} · {partyText({ partySize, freeSeats: activeBooking.freeSeats }, t)}
                 </span>
                 <PreOrderBadge count={activePreOrders.length} />
               </p>
-              <div className="flex shrink-0 items-center gap-2">
+              <div className="flex shrink-0 flex-wrap items-center gap-2">
                 {/* Head count is what gets written with the seat rows — meaningless once
                     the guest is already sitting, and this screen writes nothing then. */}
                 {!alreadySeated && (
@@ -903,10 +1078,27 @@ export function SeatingScreen() {
                       title={t('seating.actualQtyHint')}
                       className="field w-14 px-1.5 py-1 text-center text-sm font-semibold"
                     />
+                    {/* Same for the guests not charged (YC5) — bound to the BOOKED party. */}
+                    <label htmlFor="free-seats" className="text-xs text-muted">
+                      {t('freeSeats.label')}
+                    </label>
+                    <input
+                      id="free-seats"
+                      type="number"
+                      min={0}
+                      max={activeBooking.partySize}
+                      inputMode="numeric"
+                      value={freeSeatsInput}
+                      onChange={(e) => setFreeSeatsInput(e.target.value)}
+                      onBlur={() => setFreeSeatsInput(String(freeSeats))}
+                      title={t('freeSeats.hint', { party: activeBooking.partySize })}
+                      aria-invalid={freeSeatsInvalid || undefined}
+                      className={`field w-14 px-1.5 py-1 text-center text-sm font-semibold ${freeSeatsInvalid ? 'text-bad' : ''}`}
+                    />
                   </>
                 )}
                 <button
-                  onClick={() => setDetailBooking(activeBooking)}
+                  onClick={() => setDetailBooking({ ...activeBooking, ...activeOverrides })}
                   className="chip-btn btn-secondary shrink-0 rounded-lg px-3 py-1 text-xs font-semibold"
                 >
                   {t('seating.viewBooking')}
@@ -1024,6 +1216,29 @@ export function SeatingScreen() {
                       mergeMode={mergeMode}
                       onMergeModeChange={changeMergeMode}
                       readOnly={!activeBooking || alreadySeated}
+                      tableCharges={tableCharges}
+                      viewSwitch={
+                        zonePlan ? (
+                          <SeatingViewSwitch view={showMap ? 'map' : 'grid'} onChange={setSeatingView} />
+                        ) : undefined
+                      }
+                      renderMap={
+                        showMap && linkInfo && zonePlan
+                          ? (ctx) => (
+                              <Suspense fallback={<Spinner label={t('common.loading')} />}>
+                                <SeatingFloorMap
+                                  key={selectedZoneID}
+                                  scope={linkInfo}
+                                  plan={zonePlan}
+                                  tables={tables}
+                                  ctx={ctx}
+                                  onToggle={toggleTable}
+                                  onViewBooking={viewBooking}
+                                />
+                              </Suspense>
+                            )
+                          : undefined
+                      }
                       filterBarExtra={
                         activeBooking && (suggestion.single.length > 0 || suggestion.combos.length > 0) ? (
                           <button
@@ -1087,6 +1302,44 @@ export function SeatingScreen() {
                             excess: selectedCapacity - actualQty,
                           })}
                         </p>
+                      )}
+
+                      {/* What the picked tables cost (YC1), read off right where the seating is
+                          committed — the hostess tells the guest before sitting them down. */}
+                      {canSeatNow && (selectedCharges.minimumCharge > 0 || selectedCharges.surcharge > 0) && (
+                        <p className="note note-info flex flex-wrap items-center gap-x-1.5">
+                          <span className="font-semibold">{t('charges.selectedTitle')}:</span>
+                          {selectedCharges.minimumCharge > 0 && (
+                            <span>{t('charges.minimum', { amount: formatVnd(selectedCharges.minimumCharge) })}</span>
+                          )}
+                          {selectedCharges.minimumCharge > 0 && selectedCharges.surcharge > 0 && <span>·</span>}
+                          {selectedCharges.surcharge > 0 && (
+                            <span className={waiveWanted ? 'line-through opacity-70' : undefined}>
+                              {t('charges.surcharge', { amount: formatVnd(selectedCharges.surcharge) })}
+                            </span>
+                          )}
+                          {selectedCharges.surcharge > 0 && waiveWanted && (
+                            <span className="font-semibold">{t('charges.waived')}</span>
+                          )}
+                        </p>
+                      )}
+
+                      {showWaiver && (
+                        <SurchargeWaiveField
+                          checked={waiveOn}
+                          onCheckedChange={(on) => {
+                            setWaiveOn(on);
+                            setWaiveTried(false);
+                          }}
+                          reason={waiveReason}
+                          onReasonChange={setWaiveReason}
+                          storedWaived={storedWaived}
+                          storedSummary={
+                            storedWaived ? waiverSummary({ ...activeBooking, ...activeOverrides }, t) : null
+                          }
+                          reasonProblem={waiveTried ? waiveReasonProblem(storedWaived, waiveOn, waiveReason) : null}
+                          surcharge={selectedCharges.surcharge}
+                        />
                       )}
 
                       {/* Gone entirely, not disabled: a greyed-out "Xếp vào bàn" reads as
@@ -1224,7 +1477,7 @@ export function SeatingScreen() {
                     className="touch-btn w-full rounded-xl border border-line bg-surface px-4 py-2.5 text-left transition hover:border-brand/40 hover:bg-surface-hover"
                   >
                     <p className="font-semibold text-ink">
-                      {b.bookingName} · {b.partySize}p
+                      {b.bookingName} · {partyText(b, t)}
                     </p>
                     <p className="text-xs text-muted">
                       {b.reservationNo} {b.reservationTime ? `· ${b.reservationTime.slice(0, 5)}` : ''}
@@ -1306,6 +1559,19 @@ export function SeatingScreen() {
         // the hostess can see them she can cancel them.
         onCancelPreOrders={detailTarget ? () => setCancelTarget(detailTarget) : undefined}
         cancellingPreOrders={cancelling}
+        onBookingUpdated={(patch) => {
+          // The waiver changed from the card. For the guest being seated it is now what the
+          // booking stores, so the seating must not send it as a change of its own.
+          if (activeBooking && patch.globalId === activeBooking.globalId) {
+            setActiveOverrides((prev) => ({ ...prev, ...patch }));
+            const waived = isSurchargeWaived(patch);
+            setStoredWaived(waived);
+            setWaiveOn(waived);
+            setWaiveReason('');
+            setWaiveTried(false);
+          }
+          void refreshFloorPlan();
+        }}
         onClose={() => setDetailBooking(null)}
       />
     </div>

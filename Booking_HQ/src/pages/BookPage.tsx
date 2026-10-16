@@ -2,12 +2,14 @@ import { useEffect, useMemo, useState } from 'react';
 import { useNavigate, useSearchParams } from 'react-router-dom';
 import { useForm } from 'react-hook-form';
 import { useTranslation } from 'react-i18next';
-import { useCreateBooking } from '../api/queries';
+import { useCreateBooking, useSlotPoolAvailability } from '../api/queries';
 import { useStoreData } from '../store/StoreDataContext';
-import { ReservationStatus } from '../api/types';
+import { ReservationStatus, type SlotPoolAvailability } from '../api/types';
 import { ExtraFieldType } from '../api/booking';
+import { apiErrorCode, PERIOD_NOT_CONFIGURED } from '../api/reservations';
 import { formatDateHeadingWithYear } from '../lib/i18nFormat';
 import { restaurantPhoto } from '../lib/restaurantImages';
+import { maxBookable } from '../lib/slots';
 
 interface BookingFormValues {
   bookingName: string;
@@ -40,6 +42,40 @@ export default function BookPage() {
     defaultValues: { bookingName: '', bookingPhone: '', bookingEmail: '', customerNote: '' },
   });
   const createBookingMutation = useCreateBooking();
+
+  // The exact question the POST will be held to: this seating area, this link's channel, this date
+  // and time — the server picks the period from the time, as the POST does. No seating area means
+  // nothing to ask: a booking without one takes no capacity.
+  const linkInfo = data?.linkInfo;
+  const availabilityQuery =
+    linkInfo && zoneId && date && time
+      ? {
+          siteId: linkInfo.siteId,
+          sNum: linkInfo.sNum,
+          statNum: linkInfo.statNum,
+          date,
+          zoneId: Number(zoneId),
+          channelId: linkInfo.channelId,
+          channelPartnerId: linkInfo.channelPartnerID ?? undefined,
+          time: time.slice(0, 5),
+        }
+      : null;
+  const availability = useSlotPoolAvailability(availabilityQuery);
+  const [checkingSeats, setCheckingSeats] = useState(false);
+
+  /**
+   * Why this time can't take this party, or null to go ahead. A check that itself failed is not a
+   * "no" — the server still has the last word on the POST.
+   */
+  const seatProblem = (rows: SlotPoolAvailability[] | undefined, error: unknown): string | null => {
+    if (apiErrorCode(error) === PERIOD_NOT_CONFIGURED) return t('booking.periodClosed');
+    if (!rows) return null;
+    // MAX, never the sum: one booking takes all its seats from a single pool.
+    const bookable = maxBookable(rows);
+    if (bookable >= partySize) return null;
+    return bookable > 0 ? t('booking.notEnoughSeats', { bookable, partySize }) : t('booking.soldOut');
+  };
+  const availabilityError = seatProblem(availability.data, availability.error);
 
   const extraFieldConfigs = useMemo(
     () =>
@@ -81,6 +117,15 @@ export default function BookPage() {
     }
     setExtraErrors({});
 
+    // The seats on screen were counted when the page opened; ask again at the moment of booking.
+    // A refusal re-renders through the query, so the reason shows above the button.
+    if (availabilityQuery) {
+      setCheckingSeats(true);
+      const fresh = await availability.refetch();
+      setCheckingSeats(false);
+      if (seatProblem(fresh.data, fresh.error)) return;
+    }
+
     try {
       const booking = await createBookingMutation.mutateAsync({
         siteId: data?.linkInfo?.siteId,
@@ -97,6 +142,7 @@ export default function BookPage() {
         partySize,
         status: ReservationStatus.New,
         channelID: data?.linkInfo?.channelId,
+        linkPublicKey: publicKey,
         zoneID: zoneId ? Number(zoneId) : undefined,
         periodID: periodId ? Number(periodId) : undefined,
         customerNote: values.customerNote || undefined,
@@ -213,14 +259,15 @@ export default function BookPage() {
             </label>
           ))}
 
+          {availabilityError && <p className="text-sm text-resy-red">{availabilityError}</p>}
           {submitError && <p className="text-sm text-resy-red">{submitError}</p>}
 
           <button
             type="submit"
-            disabled={createBookingMutation.isPending}
+            disabled={createBookingMutation.isPending || checkingSeats || availabilityError != null}
             className="mt-2 rounded-lg bg-resy-red px-6 py-3 text-sm font-semibold text-white transition-colors hover:bg-red-600 disabled:opacity-60"
           >
-            {createBookingMutation.isPending ? t('booking.submitting') : t('booking.submit')}
+            {createBookingMutation.isPending || checkingSeats ? t('booking.submitting') : t('booking.submit')}
           </button>
         </form>
 

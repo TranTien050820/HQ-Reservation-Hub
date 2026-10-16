@@ -1,6 +1,7 @@
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import {
   SITE_ID,
+  apiErrorCode,
   cancelBooking,
   createBooking,
   fetchBookingsByPhone,
@@ -9,9 +10,11 @@ import {
   fetchMenuItems,
   fetchPeriodRules,
   fetchPeriods,
+  fetchSlotPoolAvailability,
   fetchStore,
   fetchStores,
   fetchZones,
+  type SlotPoolAvailabilityQuery,
 } from './reservations';
 
 export const queryKeys = {
@@ -25,6 +28,7 @@ export const queryKeys = {
     ['bookings', 'byPhone', phone, siteId, sNum, statNum] as const,
   menuCategories: (siteId: number, sNum: number) => ['menuCategories', siteId, sNum] as const,
   menuItems: (siteId: number, sNum: number) => ['menuItems', siteId, sNum] as const,
+  slotAvailability: (query: SlotPoolAvailabilityQuery | null) => ['slotAvailability', query] as const,
 };
 
 export function useStores(siteId: number = SITE_ID) {
@@ -129,6 +133,23 @@ export function useBookingsByPhone(phone: string, siteId?: number, sNum?: number
     queryKey: queryKeys.bookingsByPhone(trimmed, siteId, sNum, statNum),
     queryFn: () => fetchBookingsByPhone(trimmed, siteId, sNum, statNum),
     enabled: false,
+  });
+}
+
+/**
+ * Live seats from GET /api/ReservationSlotPools/availability. `null` = nothing to ask (store data
+ * not loaded yet, or no seating area — a booking without one takes no capacity).
+ *
+ * Seats move with every booking, so the answer is never served from a stale cache; and a coded
+ * refusal (400 PERIOD_NOT_CONFIGURED) is an answer, not a glitch, so it isn't retried.
+ */
+export function useSlotPoolAvailability(query: SlotPoolAvailabilityQuery | null) {
+  return useQuery({
+    queryKey: queryKeys.slotAvailability(query),
+    queryFn: () => fetchSlotPoolAvailability(query!),
+    enabled: query != null,
+    staleTime: 0,
+    retry: (failureCount, error) => apiErrorCode(error) == null && failureCount < 2,
   });
 }
 

@@ -14,6 +14,13 @@ export default defineConfig({
         changeOrigin: true,
         secure: false,
       },
+      // Live table status (SignalR, WebSockets only).
+      '/reservationHub': {
+        target: process.env.VITE_API_PROXY_TARGET || 'https://localhost:7018',
+        changeOrigin: true,
+        secure: false,
+        ws: true,
+      },
     },
   },
 })

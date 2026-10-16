@@ -14,6 +14,8 @@ import { fetchAllPages } from '../api/paginate';
 import { updateWaitlist } from '../api/waitlists';
 import { usePosOpenTables } from '../hooks/usePosOpenTables';
 import { apiErrorMessage, tableRefusalMessage, tableRefusalOf } from '../utils/apiError';
+import { seatOverlapMessage, seatOverlapOf } from '../utils/seatOverlap';
+import { tableChargeMap } from '../utils/charges';
 import { buildTableOccupancy, isTableBlocked, isTableReservable } from '../utils/tableOccupancy';
 import { isExcessCapacity, suggestTables } from '../utils/tableSuggestion';
 import { computeSeatWindow, isBeyondCurrentUse, toMinutes } from '../utils/timeWindow';
@@ -57,6 +59,8 @@ export function WaitlistSeatModal({ entry, onClose, onSeated }: WaitlistSeatModa
   }, [linkInfo, refusedTablenums]);
   const sections = useMemo(() => linkInfo?.sections ?? [], [linkInfo]);
   const zoneSectionLinks = useMemo(() => linkInfo?.zoneSectionLinks ?? [], [linkInfo]);
+  /** Today's per-table charges (YC1) — the same small line the seating screen's cards carry. */
+  const tableCharges = useMemo(() => tableChargeMap(linkInfo?.tableCharges), [linkInfo]);
 
   const date = entry.expectedDate.slice(0, 10);
   const partySize = entry.partySize ?? 1;
@@ -277,7 +281,14 @@ export function WaitlistSeatModal({ entry, onClose, onSeated }: WaitlistSeatModa
       onSeated(tablenums);
     } catch (err) {
       const refusal = tableRefusalOf(err);
-      if (refusal) {
+      const overlap = seatOverlapOf(err);
+      if (overlap) {
+        // Another booking holds the table in this window (R16) — drop it from the pick, not for good.
+        const picked = Array.from(selectedTablenums);
+        toast.error(seatOverlapMessage(overlap, t, picked));
+        const clash = new Set(overlap.tables.length > 0 ? overlap.tables : picked);
+        setSelectedTablenums((prev) => new Set(Array.from(prev).filter((n) => !clash.has(n))));
+      } else if (refusal) {
         // A table this restaurant may not use. Final — strike it out of the picker rather than
         // let the next tap earn the same 403. An unassigned station refuses every table, so
         // there is no single one to strike.
@@ -427,6 +438,7 @@ export function WaitlistSeatModal({ entry, onClose, onSeated }: WaitlistSeatModa
                 onViewBooking={(globalIds) => setDetailBooking(bookingsByGlobalId.get(globalIds[0]) ?? null)}
                 mergeMode={mergeMode}
                 onMergeModeChange={changeMergeMode}
+                tableCharges={tableCharges}
               />
             )}
           </div>

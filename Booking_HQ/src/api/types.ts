@@ -48,6 +48,11 @@ export interface ReservationZone {
   zoneID: number;
   zoneName: string;
   isNoTable?: number;
+  /**
+   * @deprecated Gone from the API — the link config never sends it, so reading it made every zone
+   * look open. Live seats come from GET /api/ReservationSlotPools/availability (`bookable`).
+   * Only the mock rows still carry it.
+   */
   availableSlots?: number;
   isUseDurationMinutes?: number;
   durationMinutes?: number;
@@ -77,6 +82,37 @@ export interface ReservationDateOverride {
   periodID: number;
   overrideDate: string; // "yyyy-MM-dd"
   isActive?: number;
+}
+
+/** A serving period one slot pool can still take a guest in on the asked date — an `availablePeriods[]` item. */
+export interface SlotPoolPeriodAvailability {
+  periodID: number;
+  periodName?: string | null;
+  startTime?: string | null; // "HH:mm:ss"
+  endTime?: string | null;
+  crossDay?: number | null;
+  /** The largest party this pool can still take in this period. */
+  bookable: number;
+}
+
+/**
+ * One row of GET /api/ReservationSlotPools/availability: a slot pool that can serve the asked
+ * seating area / channel / time.
+ *
+ * `bookable` is the number to act on — the largest party a booking can still get from THIS pool,
+ * worked out by the server down the pool's own allocation tree. A booking takes all its seats
+ * from exactly one pool, so the largest party the restaurant can take is MAX(bookable) over the
+ * rows, never the sum.
+ */
+export interface SlotPoolAvailability {
+  poolID: number;
+  poolName?: string | null;
+  bookable: number;
+  /** The period the server resolved from `time`; null when no `time` was sent. */
+  matchedPeriodID?: number | null;
+  matchedPeriodName?: string | null;
+  /** Periods open on that date in which this pool still has room, each with its own `bookable`. */
+  availablePeriods?: SlotPoolPeriodAvailability[] | null;
 }
 
 /** One extra-field answer — ReservationExtraValueItemDTO on HQ-WebOffice-API. fieldID matches ExtraFieldConfig.fieldID. */
@@ -159,6 +195,11 @@ export interface ReservationBookingCreatePayload {
   arrivalDateTime?: string;
   partySize?: number;
   channelID?: number;
+  /**
+   * Public key of the booking link the guest came through. The server takes the channel and the channel
+   * partner from the link itself, so a booking made from a partner's link counts against that partner.
+   */
+  linkPublicKey?: string;
   zoneID?: number;
   zoneSeatID?: number;
   status?: number;
@@ -173,6 +214,14 @@ export interface ReservationBookingCreatePayload {
 
 export interface ReservationBookingUpdatePayload {
   globalId: number;
+  /**
+   * The booking's own station. PUT api/ReservationBookings refuses a body without all three
+   * (400 SITE_ID_REQUIRED / SNUM_REQUIRED / STATNUM_REQUIRED), and a station other than the
+   * booking's (400 BOOKING_SCOPE_IMMUTABLE).
+   */
+  siteId: number;
+  sNum: number;
+  statNum: number;
   status?: number;
 }
 

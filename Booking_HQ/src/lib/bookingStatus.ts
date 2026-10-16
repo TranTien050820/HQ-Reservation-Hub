@@ -2,11 +2,13 @@ import { ReservationStatus, type ReservationBooking } from '../api/types';
 
 /**
  * HQ-WebOffice-API status codes aren't a simple linear lifecycle:
- * 1 Pending, 2 Confirmed, 3 Cancelled by restaurant, 4 Seated, 5 Overdue, 6/8 Arrived, 7 No-show/cancelled by guest.
+ * 1 Pending, 2 Confirmed, 3 Cancelled (by the restaurant, or by the guest from this site),
+ * 4 Reserved, 5 Overdue, 6/8 Arrived, 7 No-show — guest cancellations made here before 10/2026
+ * were recorded as 7 too.
  * The widget also derives two client-side-only outcomes once the reservation time has passed:
  * a still-pending (1) booking reads as "restaurant never confirmed", and 2/3/4 read as Overdue.
- * Cancelling only ever applies to a still-pending, not-yet-overdue (1) booking — which itself
- * reports back as status 7, since there's no dedicated "cancelled by guest" code.
+ * Cancelling only ever applies to a still-pending, not-yet-overdue (1) booking, and is sent as
+ * Cancel (3) — see `cancelBooking`.
  */
 function getReservationDateTime(booking: ReservationBooking): Date | null {
   if (!booking.reservationDate) return null;

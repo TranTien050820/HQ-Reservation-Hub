@@ -1,7 +1,7 @@
 import { createContext, useContext, useEffect, useState, type ReactNode } from 'react';
 import { login as loginApi } from '../api/auth';
 import { getTokens, setTokens, clearTokens, onSessionExpired } from './tokenStorage';
-import { canEditPreOrders, type AuthRole, type AuthUser } from '../types';
+import { canEditPreOrders, canWaiveSurcharge, type AuthRole, type AuthUser } from '../types';
 
 const USER_KEY = 'hotess.user';
 const ROLES_KEY = 'hotess.roles';
@@ -15,6 +15,12 @@ interface AuthContextValue {
    * so it is its own permission rather than part of "can use the hostess app".
    */
   canEditPreOrders: boolean;
+  /**
+   * May this account waive a booking's table surcharge ("Miễn phụ thu")? Its own permission
+   * for the same reason — it gives money away. Only decides whether the switch is drawn; the
+   * server checks the JWT on every change.
+   */
+  canWaiveSurcharge: boolean;
   isAuthenticated: boolean;
   isLoading: boolean;
   error: string | null;
@@ -114,6 +120,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         user,
         roles,
         canEditPreOrders: canEditPreOrders(roles),
+        canWaiveSurcharge: canWaiveSurcharge(roles),
         isAuthenticated: !!user,
         isLoading,
         error,

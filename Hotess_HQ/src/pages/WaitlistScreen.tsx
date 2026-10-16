@@ -40,7 +40,9 @@ const QUEUE_STATUSES: number[] = [WaitlistStatus.Waiting, WaitlistStatus.Confirm
  * its own. Any of them and they are done with this screen.
  *
  * Cancel(3)/NoShow(7) are deliberately absent: those transitions move the
- * waitlist row itself, which this screen already filters on.
+ * waitlist row itself, which this screen already filters on. So are Reject(0)
+ * and AutoReject(11): they only ever end a New booking, and the booking a
+ * waitlist row creates is born Confirm(2) or Reserved(4).
  */
 const LEFT_QUEUE_BOOKING_STATUSES: number[] = [
   BookingStatus.Seated,

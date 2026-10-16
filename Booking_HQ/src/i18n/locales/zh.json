@@ -117,6 +117,8 @@
     "noBookableZone": "所选日期该座位区域已满 — 请尝试其他区域或日期。",
     "noBookableNoPeriod": "该门店所选日期不接受在线预订。",
     "noBookableNoTime": "该日期已无可预订时间 — 请尝试其他日期。",
+    "noBookablePartySize": "所选日期该座位区域无法容纳 {{partySize}} 位 — 请减少人数，或尝试其他区域或日期。",
+    "full": "已满",
     "about": "关于 {{name}}",
     "aboutText": "这是一家以季节菜单和温馨用餐环境著称的{{cuisine}}餐厅。在线预订即可为您保留座位 — 无需电话。请在预订时间起15分钟内到店，以保留座位。",
     "goodToKnow": "温馨提示",
@@ -174,7 +176,10 @@
     "time": "时间",
     "partySize": "用餐人数",
     "seating": "座位区域",
-    "guests": "位"
+    "guests": "位",
+    "soldOut": "该时间已订满。请返回选择其他时间或座位区域。",
+    "notEnoughSeats": "该时间最多只能接待 {{bookable}} 位，无法容纳 {{partySize}} 位。请返回选择其他时间或座位区域。",
+    "periodClosed": "该时间不接受预订。请返回选择其他时间。"
   },
   "confirmation": {
     "title": "预订成功！",
