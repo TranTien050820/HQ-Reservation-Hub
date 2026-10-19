@@ -107,31 +107,3 @@ export function isBeyondCurrentUse(date: string | null | undefined, time: string
   const minutes = minutesUntil(date, time);
   return minutes != null && minutes >= CURRENT_USE_LOOKAHEAD_MINUTES;
 }
-
-/** Fallback seat-hold length when the zone has no configured duration. */
-const DEFAULT_SEAT_DURATION_MINUTES = 120;
-
-function minutesToHHMMSS(totalMinutes: number): string {
-  const wrapped = ((totalMinutes % 1440) + 1440) % 1440;
-  const h = Math.floor(wrapped / 60);
-  const m = wrapped % 60;
-  return `${String(h).padStart(2, '0')}:${String(m).padStart(2, '0')}:00`;
-}
-
-/**
- * ReserSeatTables inserts always need both reserStartTime and reserEndTime —
- * the backend SQL does `'00:00:00'::timetz + @ReserStartTime`, and passing a
- * null/untyped parameter there fails with "operator is not unique: time with
- * time zone + unknown". Always compute a window rather than omitting it.
- */
-export function computeSeatWindow(
-  startHHMM: string | null | undefined,
-  durationMinutes: number | null | undefined,
-): { reserStartTime: string; reserEndTime: string } {
-  const startMinutes = toMinutes(startHHMM) ?? vnMinutesOfDay();
-  const duration = durationMinutes && durationMinutes > 0 ? durationMinutes : DEFAULT_SEAT_DURATION_MINUTES;
-  return {
-    reserStartTime: minutesToHHMMSS(startMinutes),
-    reserEndTime: minutesToHHMMSS(startMinutes + duration),
-  };
-}

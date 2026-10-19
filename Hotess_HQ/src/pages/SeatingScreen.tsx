@@ -52,7 +52,8 @@ import {
   waiverSummary,
 } from '../utils/charges';
 import { formatVnd } from '../utils/money';
-import { computeSeatWindow, toMinutes } from '../utils/timeWindow';
+import { toMinutes } from '../utils/timeWindow';
+import { computeSeatWindow, periodsForDate } from '../utils/periods';
 import { buildTableOccupancy, isTableBlocked, isTableReservable } from '../utils/tableOccupancy';
 import { isExcessCapacity, suggestTables } from '../utils/tableSuggestion';
 import {
@@ -355,16 +356,17 @@ export function SeatingScreen() {
 
   // The hold this booking is about to take, which is what conflicts must be
   // judged against — NOT "now". Seating a 19:00 reservation at 15:00 has to
-  // compare against 19:00–21:00, otherwise every 19:00 table reads as free and
-  // the one we pick reads as free to the next hostess too. Same rule (and the
-  // same zone duration) that `seatToTables` uses when it writes the rows.
-  const seatWindow = useMemo(() => {
-    const zone = zones.find((z) => z.zoneID === selectedZoneID);
-    return computeSeatWindow(
+  // compare against 19:00 to the end of its period, otherwise every 19:00 table
+  // reads as free and the one we pick reads as free to the next hostess too. One
+  // booking holds its tables for one whole period (the backend writes the end of
+  // the period whatever is sent); `seatToTables` writes exactly this window.
+  const seatWindow = useMemo(
+    () => computeSeatWindow(
       activeBooking?.reservationTime,
-      zone?.isUseDurationMinutes ? zone.durationMinutes : undefined,
-    );
-  }, [zones, selectedZoneID, activeBooking]);
+      linkInfo ? periodsForDate(linkInfo, activeBooking?.reservationDate?.slice(0, 10) || todayStr()) : [],
+    ),
+    [linkInfo, activeBooking],
+  );
 
   // While actively seating a party, only holds overlapping that party's window
   // block a table; with no active booking this screen is a whole-day floor-plan
@@ -922,11 +924,7 @@ export function SeatingScreen() {
     }
     try {
       const date = activeBooking.reservationDate || todayStr();
-      const zone = zones.find((z) => z.zoneID === selectedZoneID);
-      const { reserStartTime, reserEndTime } = computeSeatWindow(
-        activeBooking.reservationTime,
-        zone?.isUseDurationMinutes ? zone.durationMinutes : undefined,
-      );
+      const { reserStartTime, reserEndTime } = seatWindow;
       const seatTables = Array.from(selectedTablenums).map((tablenum) => ({
         tableNum: tablenum,
         reserTable: tablenum,
@@ -995,7 +993,9 @@ export function SeatingScreen() {
   const detailTarget = targetOf(detailBooking);
 
   return (
-    <div className="mx-auto flex w-full max-w-[1280px] flex-col lg:h-full lg:min-h-0">
+    // Sơ đồ phủ kín phần còn lại của màn hình: `h-full` không ăn vì khung ngoài chỉ có `min-h-full`, nên màn tự giãn
+    // bằng flex. Chỉ khi xem sơ đồ — dạng thẻ bàn vẫn để cả trang cuộn như cũ.
+    <div className={`mx-auto flex w-full max-w-[1280px] flex-col lg:h-full lg:min-h-0 ${showMap ? 'lg:flex-1' : ''}`}>
       <div className="mb-2 flex shrink-0 items-center gap-2">
         <button
           onClick={() => navigate('../checkin')}
@@ -1203,7 +1203,7 @@ export function SeatingScreen() {
                   <div className="mb-2 shrink-0 border-b border-line-soft pb-2">
                     <TableLegend />
                   </div>
-                  <div className="lg:min-h-0 lg:flex-1 lg:overflow-y-auto">
+                  <div className={`lg:min-h-0 lg:flex-1 lg:overflow-y-auto ${showMap ? 'lg:flex lg:flex-col' : ''}`}>
                     <TableGrid
                       tables={tables}
                       sections={sections}

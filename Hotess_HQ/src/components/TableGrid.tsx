@@ -185,7 +185,7 @@ export function TableGrid({
   }
 
   return (
-    <div className={renderMap ? 'flex h-full min-h-0 flex-col' : undefined}>
+    <div className={renderMap ? 'flex h-full min-h-0 flex-1 flex-col' : undefined}>
       <div className="mb-2 flex flex-wrap items-center gap-1.5">
         {viewSwitch}
         <button

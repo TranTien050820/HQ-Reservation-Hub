@@ -75,6 +75,57 @@ export function findPeriodForTime(periods: ReservationPeriod[], hhmm: string): R
   return periods.find((period) => periodContainsTime(period, hhmm)) ?? null;
 }
 
+/**
+ * The period the backend files a time under: of the periods open that day that
+ * cover it, the one with the lowest PeriodID (ReservationPeriodMatchSql orders by
+ * PeriodID). `findPeriodForTime` takes the first in list order instead, which only
+ * agrees while the list happens to be sorted that way.
+ */
+export function holdPeriodForTime(periods: ReservationPeriod[], hhmm: string | null | undefined): ReservationPeriod | null {
+  if (!hhmm) return null;
+  let best: ReservationPeriod | null = null;
+  for (const period of periods) {
+    if (periodContainsTime(period, hhmm) && (best == null || period.periodID < best.periodID)) best = period;
+  }
+  return best;
+}
+
+/** Hold length when no open period covers the seating time — the backend keeps the end it is sent in that case. */
+const FALLBACK_SEAT_HOLD_MINUTES = 120;
+
+/**
+ * The window a seating holds its tables for: from `startHHMM` (now, when absent)
+ * to the END of the serving period the backend files that time under — one
+ * booking holds its tables for one whole period, and nobody picks an end time.
+ *
+ * The backend sets this same end itself (SeatTableDefaults: whatever end is sent
+ * is replaced), so the end here is what the grid must check conflicts against. It
+ * is still sent: ReserSeatTables inserts need both times — the SQL does
+ * `'00:00:00'::timetz + @ReserStartTime`, and a null there fails with "operator is
+ * not unique: time with time zone + unknown" — and an older backend stores what it
+ * gets.
+ *
+ * Seated at the period's very last minute ⇒ a one-minute hold, as the backend
+ * does (end = start would read as a 24-hour hold). A period without hours runs to
+ * the end of the day. No open period covering the time ⇒ the old fixed two hours.
+ */
+export function computeSeatWindow(
+  startHHMM: string | null | undefined,
+  periods: ReservationPeriod[],
+): { reserStartTime: string; reserEndTime: string; period: ReservationPeriod | null } {
+  const start = toMinutes(startHHMM) ?? vnMinutesOfDay();
+  const startHHmm = minutesToHHmm(start);
+  const period = holdPeriodForTime(periods, startHHmm);
+  let end = start + FALLBACK_SEAT_HOLD_MINUTES;
+  if (period) {
+    const periodStart = toMinutes(period.startTime);
+    const periodEnd = toMinutes(period.endTime);
+    if (periodStart == null || periodEnd == null) end = DAY_MINUTES;
+    else end = periodEnd === start ? start + 1 : periodEnd;
+  }
+  return { reserStartTime: `${startHHmm}:00`, reserEndTime: `${minutesToHHmm(end)}:00`, period };
+}
+
 const SLOT_STEP_MINUTES = 30;
 
 function minutesToHHmm(minutes: number): string {

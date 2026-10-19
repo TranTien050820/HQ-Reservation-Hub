@@ -50,7 +50,10 @@ export function FloorPlanView({
 }: FloorPlanViewProps) {
   const boxRef = useRef<HTMLDivElement>(null);
   const { width, height } = useElementSize(boxRef);
-  const { view, setView, fit, zoomAt, onWheel, onTouchMove, onTouchEnd } = useViewport(layout, width, height, fitKey ?? layout.floorPlanId);
+  // Màn xem: sơ đồ luôn nằm trong khung (không thu nhỏ quá "vừa khung", không kéo ra ngoài), lề mỏng để sơ đồ phủ kín khung.
+  const { view, setView, fit, zoomAt, onWheel, onTouchMove, onTouchEnd, dragBound } = useViewport(
+    layout, width, height, fitKey ?? layout.floorPlanId, { bounded: true, padding: 8 },
+  );
   const api = useMemo<FloorViewApi>(() => ({ zoomIn: () => zoomAt(1.25), zoomOut: () => zoomAt(1 / 1.25), fit }), [zoomAt, fit]);
 
   const { statics, tables, tableNumById } = useMemo(() => {
@@ -83,6 +86,7 @@ export function FloorPlanView({
           x={view.x}
           y={view.y}
           draggable
+          dragBoundFunc={dragBound}
           // Ngón tay luôn xê dịch vài px khi chạm: chưa quá 6 px thì vẫn là chạm (chọn bàn), chưa phải kéo khung nhìn.
           dragDistance={6}
           onDragEnd={(e) => {

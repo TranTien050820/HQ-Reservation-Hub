@@ -18,7 +18,8 @@ import { seatOverlapMessage, seatOverlapOf } from '../utils/seatOverlap';
 import { tableChargeMap } from '../utils/charges';
 import { buildTableOccupancy, isTableBlocked, isTableReservable } from '../utils/tableOccupancy';
 import { isExcessCapacity, suggestTables } from '../utils/tableSuggestion';
-import { computeSeatWindow, isBeyondCurrentUse, toMinutes } from '../utils/timeWindow';
+import { isBeyondCurrentUse, toMinutes } from '../utils/timeWindow';
+import { computeSeatWindow, periodsForDate } from '../utils/periods';
 import { formatHHmm, nowHHmm, toTimeSpan } from '../utils/waitlist';
 import { todayStr } from '../utils/date';
 import { WaitlistStatus, type ReservationBooking, type ReservationWaitlist, type TableSetup } from '../types';
@@ -120,13 +121,12 @@ export function WaitlistSeatModal({ entry, onClose, onSeated }: WaitlistSeatModa
     setScrollTarget(null);
   }, [scrollTarget]);
 
-  const zone = useMemo(() => zones.find((z) => z.zoneID === zoneID), [zones, zoneID]);
-
-  // The hold length is the zone's configured duration when it opts into one,
-  // otherwise computeSeatWindow's default — same rule the seating screen uses.
+  // One booking holds its tables for one whole period: from the seating time to
+  // the end of the period the backend files it under (it writes that end whatever
+  // is sent) — same rule the seating screen uses.
   const { reserStartTime, reserEndTime } = useMemo(
-    () => computeSeatWindow(startTime, zone?.isUseDurationMinutes ? zone.durationMinutes : undefined),
-    [startTime, zone],
+    () => computeSeatWindow(startTime, linkInfo ? periodsForDate(linkInfo, date) : []),
+    [startTime, linkInfo, date],
   );
 
   const tables = useMemo(() => {
